@@ -1,0 +1,20 @@
+sequenceDiagram
+	participant U as User (Mobile/Web)
+	participant API as NestJS API
+	participant R as Redis
+	participant PG as Postgres
+	participant S as Stripe
+	participant W as Worker
+
+	U->>API: Create Hold (lockerId, timeWindow)
+	API->>PG: Tx: create reservation HOLD (unique constraint)
+	API->>R: Set hold TTL (10 min)
+	API-->>U: holdId + expiresAt + checkoutUrl
+
+	U->>S: Checkout
+	S-->>API: webhook payment_succeeded (idempotent)
+	API->>PG: Tx: mark reservation CONFIRMED
+	API-->>U: confirmation + QR payload
+
+	W->>R: Poll / scheduled job
+	W->>PG: Expire stale HOLD reservations
