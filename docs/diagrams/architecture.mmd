@@ -1,12 +1,12 @@
 flowchart LR
-	M[Mobile App (later)] -->|HTTPS| API[NestJS API]
-	W[Next.js Web (Admin/Demo)] -->|HTTPS| API
+	M["Mobile App (later)"] -->|HTTPS| API["NestJS API"]
+	W["Next.js Web (Admin-Demo)"] -->|HTTPS| API
 
-	API --> PG[(PostgreSQL)]
-	API --> R[(Redis)]
-	API --> S[Stripe]
+	API --> PG[("PostgreSQL")]
+	API --> R[("Redis")]
+	API --> S["Stripe"]
 
 	S -->|Webhooks| API
 
-	WORKER[Worker / Jobs] --> PG
+	WORKER["Worker (Jobs)"] --> PG
 	WORKER --> R
