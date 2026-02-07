@@ -1,0 +1,22 @@
+erDiagram
+	LOCKER ||--o{ RESERVATION : has
+
+	LOCKER {
+		uuid id PK
+		string code "unique"
+		string location
+		boolean isActive
+		datetime createdAt
+		datetime updatedAt
+	}
+
+	RESERVATION {
+		uuid id PK
+		uuid lockerId FK
+		string status
+		datetime startTime
+		datetime endTime
+		datetime expiresAt
+		datetime createdAt
+		datetime updatedAt
+	}

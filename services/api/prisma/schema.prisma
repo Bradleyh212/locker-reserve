@@ -1,0 +1,48 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum ReservationStatus {
+  HOLD
+  CONFIRMED
+  EXPIRED
+  CANCELLED
+}
+
+model Locker {
+  id        String   @id @default(uuid())
+  code      String   @unique
+  location  String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  reservations Reservation[]
+}
+
+model Reservation {
+  id        String            @id @default(uuid())
+  lockerId  String
+  locker    Locker            @relation(fields: [lockerId], references: [id])
+  status    ReservationStatus @default(HOLD)
+
+  startTime DateTime
+  endTime   DateTime
+  expiresAt DateTime
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([lockerId, startTime, endTime])
+  @@index([status, expiresAt])
+}
+
+model PaymentEvent {
+  id           String   @id @default(uuid())
+  stripeEventId String  @unique
+  createdAt    DateTime @default(now())
+}
