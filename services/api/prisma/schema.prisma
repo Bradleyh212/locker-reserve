@@ -4,6 +4,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 enum ReservationStatus {
@@ -42,7 +43,7 @@ model Reservation {
 }
 
 model PaymentEvent {
-  id           String   @id @default(uuid())
-  stripeEventId String  @unique
-  createdAt    DateTime @default(now())
+  id            String   @id @default(uuid())
+  stripeEventId String   @unique
+  createdAt     DateTime @default(now())
 }
