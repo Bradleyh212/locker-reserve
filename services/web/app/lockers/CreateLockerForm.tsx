@@ -1,8 +1,11 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 
 export default function CreateLockerForm() {
+	const router = useRouter()
+
 	const [code, setCode] = useState('')
 	const [location, setLocation] = useState('')
 	const [isActive, setIsActive] = useState(true)
@@ -32,9 +35,11 @@ export default function CreateLockerForm() {
 
 			setSuccess(`Created locker ${data.code}`)
 			setCode('')
+			setLocation('')
+			setIsActive(true)
 
-			// easiest refresh for now
-			window.location.reload()
+			// ✅ refresh data for the current route (no hard reload)
+			router.refresh()
 		} catch (err: any) {
 			setError(err?.message ?? 'Network error')
 		} finally {
