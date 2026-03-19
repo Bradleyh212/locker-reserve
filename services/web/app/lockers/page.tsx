@@ -1,4 +1,5 @@
 import CreateLockerForm from './CreateLockerForm'
+import LockersList from './LockersList'
 
 type Locker = {
 	id: string
@@ -21,13 +22,7 @@ export default async function LockersPage() {
 
 			<hr style={{ margin: '24px 0' }} />
 
-			<ul>
-				{lockers.map((l) => (
-					<li key={l.id}>
-						<strong>{l.code}</strong> — {l.location} — {l.isActive ? 'Active' : 'Inactive'}
-					</li>
-				))}
-			</ul>
+			<LockersList lockers={lockers} />
 		</main>
 	)
 }

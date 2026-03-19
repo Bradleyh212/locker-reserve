@@ -1,6 +1,7 @@
-import { Body, Controller, Get, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
 import { LockersService } from './lockers.service';
 import { CreateLockerDto } from './dto/create-locker.dto';
+import { UpdateLockerDto } from './dto/update-locker.dto';
 
 @Controller('lockers')
 export class LockersController {
@@ -14,5 +15,10 @@ export class LockersController {
 	@Post()
 	create(@Body() dto: CreateLockerDto) {
 		return this.lockersService.create(dto);
+	}
+
+	@Patch(':id')
+	update(@Param('id') id: string, @Body() dto: UpdateLockerDto) {
+		return this.lockersService.update(id, dto);
 	}
 }
