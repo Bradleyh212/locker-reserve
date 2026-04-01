@@ -28,7 +28,7 @@
 ## Next Features
 
 ### Reservation lifecycle
-- [ ] Confirm reservation (HOLD → CONFIRMED)
+- [x] Confirm reservation (HOLD → CONFIRMED)
 - [ ] Cancel reservation
 - [ ] Auto-expire holds (background job)
 

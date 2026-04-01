@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post } from '@nestjs/common';
+import { Body, Controller, Get, Post, Patch, Param } from '@nestjs/common';
 import { ReservationsService } from './reservations.service';
 import { CreateHoldDto } from './dto/create-hold.dto';
 
@@ -15,4 +15,10 @@ export class ReservationsController {
 	createHold(@Body() dto: CreateHoldDto) {
 		return this.reservationsService.createHold(dto);
 	}
+
+	@Patch(':id/confirm')
+	confirm(@Param('id') id: string) {
+		return this.reservationsService.confirm(id)
+	}
+
 }
