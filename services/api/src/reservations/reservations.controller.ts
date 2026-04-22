@@ -21,4 +21,9 @@ export class ReservationsController {
 		return this.reservationsService.confirm(id)
 	}
 
+	@Patch(':id/cancel')
+	cancel(@Param('id') id: string) {
+		return this.reservationsService.cancel(id)
+}
+
 }

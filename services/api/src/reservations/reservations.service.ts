@@ -1,21 +1,24 @@
 import {
 	BadRequestException,
 	Injectable,
+	Logger,
 	NotFoundException,
 } from '@nestjs/common'
+import { Cron } from '@nestjs/schedule'
 import { PrismaService } from '../prisma/prisma.service'
 import { CreateHoldDto } from './dto/create-hold.dto'
 import { ReservationStatus } from '@prisma/client'
 
 @Injectable()
 export class ReservationsService {
+	private readonly logger = new Logger(ReservationsService.name)
+
 	constructor(private prisma: PrismaService) {}
 
 	async createHold(dto: CreateHoldDto) {
 		const start = new Date(dto.startTime)
 		const end = new Date(dto.endTime)
 
-		// Validate dates
 		if (isNaN(start.getTime()) || isNaN(end.getTime())) {
 			throw new BadRequestException('Invalid startTime or endTime')
 		}
@@ -24,7 +27,6 @@ export class ReservationsService {
 			throw new BadRequestException('endTime must be after startTime')
 		}
 
-		// Check locker exists
 		const locker = await this.prisma.locker.findUnique({
 			where: { id: dto.lockerId },
 		})
@@ -33,14 +35,12 @@ export class ReservationsService {
 			throw new NotFoundException(`Locker ${dto.lockerId} not found`)
 		}
 
-		// Check locker active
 		if (!locker.isActive) {
 			throw new BadRequestException('Locker is inactive')
 		}
 
 		const now = new Date()
 
-		// Overlap check (ignore expired holds)
 		const overlapping = await this.prisma.reservation.findFirst({
 			where: {
 				lockerId: dto.lockerId,
@@ -66,7 +66,6 @@ export class ReservationsService {
 			)
 		}
 
-		// Hold expiration (10 min)
 		const expiresAt = new Date(Date.now() + 10 * 60 * 1000)
 
 		return this.prisma.reservation.create({
@@ -90,7 +89,6 @@ export class ReservationsService {
 		})
 	}
 
-	// CONFIRM RESERVATION
 	async confirm(id: string) {
 		const reservation = await this.prisma.reservation.findUnique({
 			where: { id },
@@ -116,5 +114,52 @@ export class ReservationsService {
 				status: ReservationStatus.CONFIRMED,
 			},
 		})
+	}
+
+	async cancel(id: string) {
+		const reservation = await this.prisma.reservation.findUnique({
+			where: { id },
+		})
+
+		if (!reservation) {
+			throw new NotFoundException('Reservation not found')
+		}
+
+		if (reservation.status === ReservationStatus.CANCELLED) {
+			throw new BadRequestException('Reservation already cancelled')
+		}
+
+		if (
+			reservation.status === ReservationStatus.HOLD &&
+			reservation.expiresAt <= new Date()
+		) {
+			throw new BadRequestException('Expired hold cannot be cancelled')
+		}
+
+		return this.prisma.reservation.update({
+			where: { id },
+			data: {
+				status: ReservationStatus.CANCELLED,
+			},
+		})
+	}
+
+	@Cron('*/60 * * * * *')
+	async expireHolds() {
+		const result = await this.prisma.reservation.updateMany({
+			where: {
+				status: ReservationStatus.HOLD,
+				expiresAt: {
+					lte: new Date(),
+				},
+			},
+			data: {
+				status: ReservationStatus.EXPIRED,
+			},
+		})
+
+		if (result.count > 0) {
+			this.logger.log(`Expired ${result.count} hold(s)`)
+		}
 	}
 }

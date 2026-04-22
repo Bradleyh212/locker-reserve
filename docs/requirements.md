@@ -29,8 +29,8 @@
 
 ### Reservation lifecycle
 - [x] Confirm reservation (HOLD → CONFIRMED)
-- [ ] Cancel reservation
-- [ ] Auto-expire holds (background job)
+- [x] Cancel reservation
+- [x] Auto-expire holds (background job in NextJS)
 
 ### Availability
 - [ ] Check available lockers for a time range
