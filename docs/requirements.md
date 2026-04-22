@@ -16,21 +16,33 @@
 - [x] Prevent booking inactive lockers
 - [x] Validate time range (end > start)
 
-#### UI (Admin)
+---
+
+## Admin UI (Next.js)
+
+### Lockers
 - [x] View lockers
 - [x] Toggle locker active/inactive
+
+### Reservations
 - [x] Create hold from UI
 - [x] Display reservations
 - [x] Show expired holds
+- [ ] Confirm reservation from UI
+- [ ] Cancel reservation from UI
 
 ---
 
-## Next Features
+## Backend (NestJS)
 
 ### Reservation lifecycle
 - [x] Confirm reservation (HOLD → CONFIRMED)
 - [x] Cancel reservation
-- [x] Auto-expire holds (background job in NextJS)
+- [x] Auto-expire holds (background job in NestJS)
+
+---
+
+## Next Features
 
 ### Availability
 - [ ] Check available lockers for a time range
