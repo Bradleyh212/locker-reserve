@@ -28,8 +28,8 @@
 - [x] Create hold from UI
 - [x] Display reservations
 - [x] Show expired holds
-- [ ] Confirm reservation from UI
-- [ ] Cancel reservation from UI
+- [x] Confirm reservation from UI
+- [x] Cancel reservation from UI
 
 ---
 
