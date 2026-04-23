@@ -49,9 +49,9 @@
 - [x] Filter by location
 
 ### Payments
-- [ ] Integrate Stripe
-- [ ] Confirm reservation after payment
+- [x] Integrate Stripe
 - [ ] Handle payment webhooks
+- [ ] Confirm reservation after payment
 
 ---
 
