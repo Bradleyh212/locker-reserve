@@ -5,10 +5,11 @@ import {
 } from '@nestjs/common'
 import Stripe from 'stripe'
 import { PrismaService } from '../prisma/prisma.service'
+import { ReservationStatus } from '@prisma/client'
 
 @Injectable()
 export class PaymentsService {
-	private stripe: Stripe.Stripe
+	private stripe: any
 
 	constructor(private prisma: PrismaService) {
 		this.stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
@@ -25,17 +26,15 @@ export class PaymentsService {
 			throw new NotFoundException('Reservation not found')
 		}
 
-		if (reservation.status === 'EXPIRED') {
-
+		if (reservation.status === ReservationStatus.EXPIRED) {
 			throw new BadRequestException('Hold has expired')
-
 		}
 
-		if (reservation.status !== 'HOLD') {
+		if (reservation.status !== ReservationStatus.HOLD) {
 			throw new BadRequestException('Only HOLD reservations can be paid')
 		}
 
-		if (reservation.expiresAt <= new Date()) {				// Old hold that's not auto-updated
+		if (reservation.expiresAt <= new Date()) {
 			throw new BadRequestException('Hold has expired')
 		}
 
@@ -55,5 +54,83 @@ export class PaymentsService {
 				reservationId,
 			},
 		})
+	}
+
+	async handleWebhook(rawBody: Buffer | undefined, signature: string) {
+		if (!rawBody) {
+			throw new BadRequestException('Missing raw body')
+		}
+
+		if (!signature) {
+			throw new BadRequestException('Missing Stripe signature')
+		}
+
+		const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET
+
+		if (!webhookSecret) {
+			throw new BadRequestException('Missing Stripe webhook secret')
+		}
+
+		let event
+
+		try {
+			event = this.stripe.webhooks.constructEvent(
+				rawBody,
+				signature,
+				webhookSecret,
+			)
+		} catch (err: any) {
+			throw new BadRequestException(
+				`Webhook signature verification failed: ${err.message}`,
+			)
+		}
+
+		const existingEvent = await this.prisma.paymentEvent.findUnique({
+			where: {
+				stripeEventId: event.id,
+			},
+		})
+
+		if (existingEvent) {
+			return { received: true, duplicate: true }
+		}
+
+		await this.prisma.paymentEvent.create({
+			data: {
+				stripeEventId: event.id,
+			},
+		})
+
+		if (event.type === 'payment_intent.succeeded') {
+			const paymentIntent = event.data.object as any
+			const reservationId = paymentIntent.metadata?.reservationId
+
+			if (!reservationId) {
+				throw new BadRequestException('Missing reservationId metadata')
+			}
+
+			const reservation = await this.prisma.reservation.findUnique({
+				where: {
+					id: reservationId,
+				},
+			})
+
+			if (!reservation) {
+				throw new NotFoundException('Reservation not found')
+			}
+
+			if (reservation.status === ReservationStatus.HOLD) {
+				await this.prisma.reservation.update({
+					where: {
+						id: reservationId,
+					},
+					data: {
+						status: ReservationStatus.CONFIRMED,
+					},
+				})
+			}
+		}
+
+		return { received: true }
 	}
 }
