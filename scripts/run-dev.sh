@@ -2,19 +2,25 @@
 
 set -e
 
-ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
 echo "Starting Postgres container..."
 cd "$ROOT_DIR"
 docker compose -f infra/local/docker-compose.yml up -d
 
-echo "Starting API on http://localhost:3001 ..."
+echo "Installing API dependencies..."
 cd "$ROOT_DIR/services/api"
+npm install
+
+echo "Starting API on http://localhost:3001 ..."
 npm run start:dev &
 API_PID=$!
 
-echo "Starting Web on http://localhost:3000 ..."
+echo "Installing Web dependencies..."
 cd "$ROOT_DIR/services/web"
+npm install
+
+echo "Starting Web on http://localhost:3000 ..."
 npm run dev &
 WEB_PID=$!
 

@@ -67,4 +67,4 @@ Built with Next.js, NestJS, and PostgreSQL.
 From the project root:
 
 ```bash
-./run-dev.sh
+./scripts/run-dev.sh
