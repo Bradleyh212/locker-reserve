@@ -45,8 +45,8 @@
 ## Next Features
 
 ### Availability
-- [ ] Check available lockers for a time range
-- [ ] Filter by location
+- [x] Check available lockers for a time range
+- [x] Filter by location
 
 ### Payments
 - [ ] Integrate Stripe
@@ -59,3 +59,10 @@
 - [ ] Better UI styling
 - [ ] Sorting / filtering reservations
 - [ ] User accounts (future)
+
+
+
+* connect the main page to your pages (/lockers, /reservations, /availability)
+* improve status styling / dashboard polish
+* start thinking about payments / Stripe
+* or start documenting your architecture and features better

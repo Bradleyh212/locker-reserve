@@ -1,7 +1,9 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { ReservationStatus } from '@prisma/client'
 import { CreateLockerDto } from './dto/create-locker.dto';
 import { UpdateLockerDto } from './dto/update-locker.dto';
+import { CheckAvailabilityDto } from './dto/check-availability.dto'
 
 @Injectable()
 export class LockersService {
@@ -43,5 +45,56 @@ export class LockersService {
 			}
 			throw e;
 		}
+	}
+
+	async checkAvailability(dto: CheckAvailabilityDto) {
+		const start = new Date(dto.startTime)
+		const end = new Date(dto.endTime)
+
+		if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+			throw new BadRequestException('Invalid startTime or endTime')
+		}
+
+		if (end <= start) {
+			throw new BadRequestException('endTime must be after startTime')
+		}
+
+		const now = new Date()
+
+		const unavailableReservations = await this.prisma.reservation.findMany({
+			where: {
+				AND: [
+					{
+						OR: [
+							{ status: ReservationStatus.CONFIRMED },
+							{
+								status: ReservationStatus.HOLD,
+								expiresAt: { gt: now },
+							},
+						],
+					},
+					{ startTime: { lt: end } },
+					{ endTime: { gt: start } },
+				],
+			},
+			select: {
+				lockerId: true,
+			},
+		})
+
+		const unavailableLockerIds = unavailableReservations.map((r) => r.lockerId)
+
+		return this.prisma.locker.findMany({
+			where: {
+				isActive: true,
+				...(dto.location ? { location: dto.location } : {}),
+				id: {
+					notIn: unavailableLockerIds,
+				},
+			},
+			orderBy: {
+				code: 'asc',
+			},
+		})
 	}
 }
