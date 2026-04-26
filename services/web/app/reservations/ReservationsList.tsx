@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import PayReservationButton from './PayReservationButton'
 
 type Reservation = {
 	id: string
@@ -104,6 +105,8 @@ export default function ReservationsList({
 					const canCancel =
 						(r.status === 'HOLD' && new Date(r.expiresAt) > new Date()) ||
 						r.status === 'CONFIRMED'
+					const canPay =
+						r.status === 'HOLD' && new Date(r.expiresAt) > new Date()
 
 					return (
 						<li key={r.id} style={{ marginBottom: 14 }}>
@@ -158,6 +161,8 @@ export default function ReservationsList({
 									{loadingId === r.id ? 'Cancelling...' : 'Cancel'}
 								</button>
 							) : null}
+
+							{canPay ? <PayReservationButton reservationId={r.id} /> : null}
 						</li>
 					)
 				})}
