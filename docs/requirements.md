@@ -21,6 +21,7 @@
 ## Admin UI (Next.js)
 
 ### Authentication
+- Status: implemented for the admin MVP.
 - [x] Add admin login page at `/login`
 - [x] Protect `/`, `/lockers`, `/reservations`, and `/availability`
 - [x] Store admin JWT client-side for MVP
@@ -42,6 +43,7 @@
 ## Backend (NestJS)
 
 ### Admin authentication
+- Status: implemented with JWT bearer tokens for admin-only API routes.
 - [x] Add `POST /auth/login`
 - [x] Verify admin password with bcrypt hash
 - [x] Load `ADMIN_EMAIL`, `ADMIN_PASSWORD_HASH`, and `JWT_SECRET` from environment
@@ -77,11 +79,11 @@ Required backend variables:
 - `ADMIN_EMAIL`
 - `ADMIN_PASSWORD_HASH`
 - `JWT_SECRET`
+- `DATABASE_URL`
 - `STRIPE_SECRET_KEY`
 - `STRIPE_WEBHOOK_SECRET`
-- `DATABASE_URL`
 
-Allowed frontend public variable:
+Required frontend variable:
 - `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`
 
 Security constraints:

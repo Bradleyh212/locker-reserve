@@ -33,14 +33,19 @@ export default function LoginPage() {
 			const data = await res.json().catch(() => null)
 
 			if (!res.ok || !data?.accessToken) {
-				setError(data?.message ?? `Login failed (${res.status})`)
+				setError(
+					data?.message ??
+						(res.status === 401
+							? 'Invalid email or password'
+							: `Login failed (${res.status})`),
+				)
 				return
 			}
 
 			setAdminToken(data.accessToken)
 			router.replace('/')
-		} catch (e: any) {
-			setError(e?.message ?? 'Network error')
+		} catch (error: unknown) {
+			setError(error instanceof Error ? error.message : 'Network error')
 		} finally {
 			setLoading(false)
 		}

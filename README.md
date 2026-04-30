@@ -28,9 +28,11 @@ Built with Next.js, NestJS, and PostgreSQL.
 - Filter by location
 
 ### **Admin Authentication**
-- Admin login with email and password
-- JWT-protected admin API routes
+- Status: implemented for the admin MVP
+- Admin login with email and password at `/login`
+- JWT-protected admin API routes for lockers, reservations, and PaymentIntent creation
 - Protected admin pages: `/`, `/lockers`, `/reservations`, `/availability`
+- Admin JWT stored in `localStorage` for the current MVP
 - Stripe webhook remains public and verifies Stripe signatures
 
 ----------------------------------------------------------------------------
@@ -71,18 +73,18 @@ Built with Next.js, NestJS, and PostgreSQL.
 
 ## **Environment Variables**
 
-Backend variables:
+Required backend variables:
 
 ```bash
 ADMIN_EMAIL=
 ADMIN_PASSWORD_HASH=
 JWT_SECRET=
+DATABASE_URL=
 STRIPE_SECRET_KEY=
 STRIPE_WEBHOOK_SECRET=
-DATABASE_URL=
 ```
 
-Frontend variables:
+Required frontend variable:
 
 ```bash
 NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=

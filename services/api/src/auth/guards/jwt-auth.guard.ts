@@ -14,14 +14,15 @@ export class JwtAuthGuard implements CanActivate {
 	async canActivate(context: ExecutionContext): Promise<boolean> {
 		const request = context.switchToHttp().getRequest()
 		const token = this.extractToken(request.headers.authorization)
+
+		if (!token) {
+			throw new UnauthorizedException('Missing bearer token')
+		}
+
 		const jwtSecret = process.env.JWT_SECRET
 
 		if (!jwtSecret) {
 			throw new InternalServerErrorException('JWT secret is not configured')
-		}
-
-		if (!token) {
-			throw new UnauthorizedException('Missing bearer token')
 		}
 
 		try {

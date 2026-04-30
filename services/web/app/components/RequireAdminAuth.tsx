@@ -1,9 +1,26 @@
 'use client'
 
 import type { ReactNode } from 'react'
-import { useEffect, useState } from 'react'
+import { useEffect, useSyncExternalStore } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { clearAdminToken, getAdminToken } from '../lib/auth'
+
+const TOKEN_PENDING = '__locker_reserve_token_pending__'
+
+function subscribeToTokenChanges(onStoreChange: () => void) {
+	window.addEventListener('storage', onStoreChange)
+
+	return () => window.removeEventListener('storage', onStoreChange)
+}
+
+function getTokenSnapshot() {
+	return getAdminToken()
+}
+
+function getServerTokenSnapshot() {
+	return TOKEN_PENDING
+}
 
 export default function RequireAdminAuth({
 	children,
@@ -11,23 +28,24 @@ export default function RequireAdminAuth({
 	children: ReactNode
 }) {
 	const router = useRouter()
-	const [isAuthorized, setIsAuthorized] = useState(false)
+	const token = useSyncExternalStore(
+		subscribeToTokenChanges,
+		getTokenSnapshot,
+		getServerTokenSnapshot,
+	)
 
 	useEffect(() => {
-		if (!getAdminToken()) {
+		if (!token) {
 			router.replace('/login')
-			return
 		}
-
-		setIsAuthorized(true)
-	}, [router])
+	}, [router, token])
 
 	function signOut() {
 		clearAdminToken()
 		router.replace('/login')
 	}
 
-	if (!isAuthorized) {
+	if (!token || token === TOKEN_PENDING) {
 		return (
 			<main style={{ padding: 24, maxWidth: 720 }}>
 				<p>Checking session...</p>
@@ -46,9 +64,9 @@ export default function RequireAdminAuth({
 					alignItems: 'center',
 				}}
 			>
-				<a href="/" style={{ color: 'inherit', textDecoration: 'none' }}>
+				<Link href="/" style={{ color: 'inherit', textDecoration: 'none' }}>
 					Locker Reserve
-				</a>
+				</Link>
 				<button type="button" onClick={signOut}>
 					Sign out
 				</button>

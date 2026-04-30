@@ -145,8 +145,5 @@ vite.config.ts.timestamp-*
 .env
 .env.*
 
-# Claude
-.claude/
-
 # Swp
 *.swp
