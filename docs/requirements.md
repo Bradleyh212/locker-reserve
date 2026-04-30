@@ -20,6 +20,12 @@
 
 ## Admin UI (Next.js)
 
+### Authentication
+- [x] Add admin login page at `/login`
+- [x] Protect `/`, `/lockers`, `/reservations`, and `/availability`
+- [x] Store admin JWT client-side for MVP
+- [ ] Replace MVP `localStorage` token storage with httpOnly cookies later
+
 ### Lockers
 - [x] View lockers
 - [x] Toggle locker active/inactive
@@ -34,6 +40,15 @@
 ---
 
 ## Backend (NestJS)
+
+### Admin authentication
+- [x] Add `POST /auth/login`
+- [x] Verify admin password with bcrypt hash
+- [x] Load `ADMIN_EMAIL`, `ADMIN_PASSWORD_HASH`, and `JWT_SECRET` from environment
+- [x] Protect locker routes with JWT guard
+- [x] Protect reservation routes with JWT guard
+- [x] Protect `POST /payments/create-intent` with JWT guard
+- [x] Keep `POST /payments/webhook` public for Stripe signature verification
 
 ### Reservation lifecycle
 - [x] Confirm reservation (HOLD → CONFIRMED)
@@ -50,8 +65,30 @@
 
 ### Payments
 - [x] Integrate Stripe
-- [ ] Handle payment webhooks
-- [ ] Confirm reservation after payment
+- [x] Handle payment webhooks
+- [x] Confirm reservation after payment
+- [x] Calculate payment amount on the backend
+
+---
+
+## Environment Variables
+
+Required backend variables:
+- `ADMIN_EMAIL`
+- `ADMIN_PASSWORD_HASH`
+- `JWT_SECRET`
+- `STRIPE_SECRET_KEY`
+- `STRIPE_WEBHOOK_SECRET`
+- `DATABASE_URL`
+
+Allowed frontend public variable:
+- `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`
+
+Security constraints:
+- Never commit `.env` values.
+- Keep `.env` files ignored by git.
+- Do not expose `STRIPE_SECRET_KEY` or `JWT_SECRET` to the frontend.
+- Do not let the frontend decide the payment amount.
 
 ---
 

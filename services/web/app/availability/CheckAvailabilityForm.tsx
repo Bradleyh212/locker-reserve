@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { apiUrl, authFetch } from '../lib/auth'
 import AvailabilityResults from './AvailabilityResults'
 
 type Locker = {
@@ -48,8 +49,8 @@ export default function CheckAvailabilityForm() {
 				params.set('location', location.trim())
 			}
 
-			const res = await fetch(
-				`http://localhost:3001/lockers/availability?${params.toString()}`
+			const res = await authFetch(
+				apiUrl(`/lockers/availability?${params.toString()}`)
 			)
 
 			const data = await res.json().catch(() => null)

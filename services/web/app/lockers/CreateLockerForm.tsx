@@ -1,11 +1,13 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { apiUrl, authFetch } from '../lib/auth'
 
-export default function CreateLockerForm() {
-	const router = useRouter()
-
+export default function CreateLockerForm({
+	onChanged,
+}: {
+	onChanged: () => void
+}) {
 	const [code, setCode] = useState('')
 	const [location, setLocation] = useState('')
 	const [isActive, setIsActive] = useState(true)
@@ -20,7 +22,7 @@ export default function CreateLockerForm() {
 		setLoading(true)
 
 		try {
-			const res = await fetch('http://localhost:3001/lockers', {
+			const res = await authFetch(apiUrl('/lockers'), {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ code, location, isActive }),
@@ -38,8 +40,7 @@ export default function CreateLockerForm() {
 			setLocation('')
 			setIsActive(true)
 
-			// ✅ refresh data for the current route (no hard reload)
-			router.refresh()
+			onChanged()
 		} catch (err: any) {
 			setError(err?.message ?? 'Network error')
 		} finally {

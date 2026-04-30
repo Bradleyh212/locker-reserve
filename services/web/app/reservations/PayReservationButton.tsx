@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { loadStripe } from '@stripe/stripe-js'
 import {
 	Elements,
@@ -9,6 +8,7 @@ import {
 	useElements,
 	useStripe,
 } from '@stripe/react-stripe-js'
+import { apiUrl, authFetch } from '../lib/auth'
 
 const stripePromise = loadStripe(
 	process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!,
@@ -16,8 +16,10 @@ const stripePromise = loadStripe(
 
 export default function PayReservationButton({
 	reservationId,
+	onChanged,
 }: {
 	reservationId: string
+	onChanged: () => void
 }) {
 	const [clientSecret, setClientSecret] = useState<string | null>(null)
 	const [error, setError] = useState<string | null>(null)
@@ -28,7 +30,7 @@ export default function PayReservationButton({
 		setLoading(true)
 
 		try {
-			const res = await fetch('http://localhost:3001/payments/create-intent', {
+			const res = await authFetch(apiUrl('/payments/create-intent'), {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ reservationId }),
@@ -71,17 +73,16 @@ export default function PayReservationButton({
 
 			{clientSecret ? (
 				<Elements stripe={stripePromise} options={{ clientSecret }}>
-					<PaymentForm />
+					<PaymentForm onChanged={onChanged} />
 				</Elements>
 			) : null}
 		</div>
 	)
 }
 
-function PaymentForm() {
+function PaymentForm({ onChanged }: { onChanged: () => void }) {
 	const stripe = useStripe()
 	const elements = useElements()
-	const router = useRouter()
 	const [error, setError] = useState<string | null>(null)
 	const [loading, setLoading] = useState(false)
 	const [success, setSuccess] = useState(false)
@@ -110,7 +111,7 @@ function PaymentForm() {
 		setSuccess(true)
 
 		setTimeout(() => {
-			router.refresh()
+			onChanged()
 		}, 1500)
 
 		setLoading(false)

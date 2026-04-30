@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { apiUrl, authFetch } from '../lib/auth'
 import PayReservationButton from './PayReservationButton'
 
 type Reservation = {
@@ -18,10 +18,11 @@ type Reservation = {
 
 export default function ReservationsList({
 	reservations,
+	onChanged,
 }: {
 	reservations: Reservation[]
+	onChanged: () => void
 }) {
-	const router = useRouter()
 	const [loadingId, setLoadingId] = useState<string | null>(null)
 	const [error, setError] = useState<string | null>(null)
 
@@ -30,8 +31,8 @@ export default function ReservationsList({
 		setLoadingId(id)
 
 		try {
-			const res = await fetch(
-				`http://localhost:3001/reservations/${id}/confirm`,
+			const res = await authFetch(
+				apiUrl(`/reservations/${id}/confirm`),
 				{
 					method: 'PATCH',
 				},
@@ -44,7 +45,7 @@ export default function ReservationsList({
 				return
 			}
 
-			router.refresh()
+			onChanged()
 		} catch (e: any) {
 			setError(e?.message ?? 'Network error')
 		} finally {
@@ -57,8 +58,8 @@ export default function ReservationsList({
 		setLoadingId(id)
 
 		try {
-			const res = await fetch(
-				`http://localhost:3001/reservations/${id}/cancel`,
+			const res = await authFetch(
+				apiUrl(`/reservations/${id}/cancel`),
 				{
 					method: 'PATCH',
 				},
@@ -71,7 +72,7 @@ export default function ReservationsList({
 				return
 			}
 
-			router.refresh()
+			onChanged()
 		} catch (e: any) {
 			setError(e?.message ?? 'Network error')
 		} finally {
@@ -162,7 +163,12 @@ export default function ReservationsList({
 								</button>
 							) : null}
 
-							{canPay ? <PayReservationButton reservationId={r.id} /> : null}
+							{canPay ? (
+								<PayReservationButton
+									reservationId={r.id}
+									onChanged={onChanged}
+								/>
+							) : null}
 						</li>
 					)
 				})}

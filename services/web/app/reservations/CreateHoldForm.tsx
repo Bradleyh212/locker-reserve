@@ -1,7 +1,7 @@
 'use client'
 
-import { useRouter } from 'next/navigation'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { apiUrl, authFetch } from '../lib/auth'
 
 type Locker = {
 	id: string
@@ -10,9 +10,13 @@ type Locker = {
 	isActive: boolean
 }
 
-export default function CreateHoldForm({ lockers }: { lockers: Locker[] }) {
-	const router = useRouter()
-
+export default function CreateHoldForm({
+	lockers,
+	onChanged,
+}: {
+	lockers: Locker[]
+	onChanged: () => void
+}) {
 	const activeLockers = useMemo(
 		() => lockers.filter((l) => l.isActive),
 		[lockers]
@@ -24,6 +28,12 @@ export default function CreateHoldForm({ lockers }: { lockers: Locker[] }) {
 	const [error, setError] = useState<string | null>(null)
 	const [success, setSuccess] = useState<string | null>(null)
 	const [loading, setLoading] = useState(false)
+
+	useEffect(() => {
+		if (!activeLockers.some((locker) => locker.id === lockerId)) {
+			setLockerId(activeLockers[0]?.id ?? '')
+		}
+	}, [activeLockers, lockerId])
 
 	async function onSubmit(e: React.FormEvent) {
 		e.preventDefault()
@@ -38,7 +48,7 @@ export default function CreateHoldForm({ lockers }: { lockers: Locker[] }) {
 		setLoading(true)
 
 		try {
-			const res = await fetch('http://localhost:3001/reservations/hold', {
+			const res = await authFetch(apiUrl('/reservations/hold'), {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
@@ -62,7 +72,7 @@ export default function CreateHoldForm({ lockers }: { lockers: Locker[] }) {
 			setSuccess(`Hold created for locker ${data.locker.code}`)
 			setStartTime('')
 			setEndTime('')
-			router.refresh()
+			onChanged()
 		} catch (e: any) {
 			setError(e?.message ?? 'Network error')
 		} finally {

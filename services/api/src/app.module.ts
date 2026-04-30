@@ -5,17 +5,19 @@ import { AppService } from './app.service'
 import { PrismaModule } from './prisma/prisma.module'
 import { LockersModule } from './lockers/lockers.module'
 import { ReservationsModule } from './reservations/reservations.module'
-import { PaymentsModule } from './payments/payments.module';
+import { PaymentsModule } from './payments/payments.module'
+import { AuthModule } from './auth/auth.module'
 
 @Module({
-  imports: [
-    ScheduleModule.forRoot(),
-    PrismaModule,
-    LockersModule,
-    ReservationsModule,
-    PaymentsModule,
-  ],
-  controllers: [AppController],
-  providers: [AppService],
+	imports: [
+		ScheduleModule.forRoot(),
+		PrismaModule,
+		AuthModule,
+		LockersModule,
+		ReservationsModule,
+		PaymentsModule,
+	],
+	controllers: [AppController],
+	providers: [AppService],
 })
 export class AppModule {}

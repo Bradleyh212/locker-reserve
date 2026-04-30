@@ -1,18 +1,27 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { ReservationsController } from './reservations.controller';
+import { JwtModule } from '@nestjs/jwt'
+import { Test, TestingModule } from '@nestjs/testing'
+import { ReservationsController } from './reservations.controller'
+import { ReservationsService } from './reservations.service'
 
 describe('ReservationsController', () => {
-  let controller: ReservationsController;
+	let controller: ReservationsController
 
-  beforeEach(async () => {
-    const module: TestingModule = await Test.createTestingModule({
-      controllers: [ReservationsController],
-    }).compile();
+	beforeEach(async () => {
+		const module: TestingModule = await Test.createTestingModule({
+			imports: [JwtModule.register({ secret: 'test' })],
+			controllers: [ReservationsController],
+			providers: [
+				{
+					provide: ReservationsService,
+					useValue: {},
+				},
+			],
+		}).compile()
 
-    controller = module.get<ReservationsController>(ReservationsController);
-  });
+		controller = module.get<ReservationsController>(ReservationsController)
+	})
 
-  it('should be defined', () => {
-    expect(controller).toBeDefined();
-  });
-});
+	it('should be defined', () => {
+		expect(controller).toBeDefined()
+	})
+})

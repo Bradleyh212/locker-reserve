@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { apiUrl, authFetch } from '../lib/auth'
 
 type Locker = {
 	id: string
@@ -12,8 +12,13 @@ type Locker = {
 	updatedAt: string
 }
 
-export default function LockersList({ lockers }: { lockers: Locker[] }) {
-	const router = useRouter()
+export default function LockersList({
+	lockers,
+	onChanged,
+}: {
+	lockers: Locker[]
+	onChanged: () => void
+}) {
 	const [loadingId, setLoadingId] = useState<string | null>(null)
 	const [error, setError] = useState<string | null>(null)
 
@@ -22,7 +27,7 @@ export default function LockersList({ lockers }: { lockers: Locker[] }) {
 		setLoadingId(locker.id)
 
 		try {
-			const res = await fetch(`http://localhost:3001/lockers/${locker.id}`, {
+			const res = await authFetch(apiUrl(`/lockers/${locker.id}`), {
 				method: 'PATCH',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ isActive: !locker.isActive }),
@@ -35,7 +40,7 @@ export default function LockersList({ lockers }: { lockers: Locker[] }) {
 				return
 			}
 
-			router.refresh()
+			onChanged()
 		} catch (e: any) {
 			setError(e?.message ?? 'Network error')
 		} finally {
