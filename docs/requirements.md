@@ -71,6 +71,16 @@
 - [x] Confirm reservation after payment
 - [x] Calculate payment amount on the backend
 
+## Deployment Readiness
+- [ ] Dockerize API
+- [ ] Dockerize web
+- [ ] Add production-ready docker-compose for local verification
+- [ ] Add health check endpoint
+- [ ] Configure production env variables
+- [ ] Configure CORS from env
+- [ ] Configure public Stripe webhook URL
+- [ ] Prepare AWS/EKS manifests later
+
 ---
 
 ## Environment Variables
