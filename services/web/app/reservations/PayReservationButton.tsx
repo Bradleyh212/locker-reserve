@@ -19,7 +19,7 @@ export default function PayReservationButton({
 	onChanged,
 }: {
 	reservationId: string
-	onChanged: () => void
+	onChanged: () => void | Promise<void>
 }) {
 	const [clientSecret, setClientSecret] = useState<string | null>(null)
 	const [error, setError] = useState<string | null>(null)
@@ -80,12 +80,26 @@ export default function PayReservationButton({
 	)
 }
 
-function PaymentForm({ onChanged }: { onChanged: () => void }) {
+function PaymentForm({
+	onChanged,
+}: {
+	onChanged: () => void | Promise<void>
+}) {
 	const stripe = useStripe()
 	const elements = useElements()
 	const [error, setError] = useState<string | null>(null)
 	const [loading, setLoading] = useState(false)
 	const [success, setSuccess] = useState(false)
+
+	function refreshReservationAfterPayment() {
+		const refreshDelays = [0, 1000, 3000, 6000]
+
+		refreshDelays.forEach((delay) => {
+			window.setTimeout(() => {
+				void Promise.resolve(onChanged()).catch(() => undefined)
+			}, delay)
+		})
+	}
 
 	async function submitPayment(e: React.FormEvent) {
 		e.preventDefault()
@@ -109,18 +123,14 @@ function PaymentForm({ onChanged }: { onChanged: () => void }) {
 		}
 
 		setSuccess(true)
-
-		setTimeout(() => {
-			onChanged()
-		}, 1500)
-
+		refreshReservationAfterPayment()
 		setLoading(false)
 	}
 
 	if (success) {
 		return (
 			<p style={{ color: 'green', marginTop: 12 }}>
-				Payment completed successfully.
+				Payment completed successfully. Refreshing reservation status...
 			</p>
 		)
 	}

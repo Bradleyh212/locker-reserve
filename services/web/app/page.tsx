@@ -33,7 +33,8 @@ export default function HomePage() {
 						Locker Reserve Dashboard
 					</h1>
 					<p style={{ fontSize: '1rem', opacity: 0.85, maxWidth: 700 }}>
-						Manage lockers, reservations, and availability from one place.
+						This is the admin dashboard for managing lockers, reservations,
+						and availability from one place.
 					</p>
 				</section>
 
@@ -52,7 +53,7 @@ export default function HomePage() {
 								display: 'block',
 								padding: 20,
 								border: '1px solid #333',
-								borderRadius: 12,
+								borderRadius: 8,
 								backgroundColor: '#111',
 								color: 'white',
 								textDecoration: 'none',

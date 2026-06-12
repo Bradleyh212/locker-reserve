@@ -16,6 +16,42 @@ type Reservation = {
 	}
 }
 
+const statusStyles: Record<
+	string,
+	{ backgroundColor: string; borderColor: string; color: string }
+> = {
+	HOLD: {
+		backgroundColor: '#2f2813',
+		borderColor: '#c9941a',
+		color: '#ffe2a3',
+	},
+	CONFIRMED: {
+		backgroundColor: '#102a1b',
+		borderColor: '#2f9e60',
+		color: '#a7f3c2',
+	},
+	CANCELLED: {
+		backgroundColor: '#2d1820',
+		borderColor: '#b84d67',
+		color: '#ffc2d0',
+	},
+	EXPIRED: {
+		backgroundColor: '#2b1f16',
+		borderColor: '#b56a2c',
+		color: '#ffd0a3',
+	},
+}
+
+function getStatusStyle(status: string) {
+	return (
+		statusStyles[status] ?? {
+			backgroundColor: '#1f1f1f',
+			borderColor: '#555',
+			color: 'white',
+		}
+	)
+}
+
 export default function ReservationsList({
 	reservations,
 	onChanged,
@@ -80,8 +116,7 @@ export default function ReservationsList({
 		}
 	}
 
-	function getDisplayStatus(r: Reservation) {
-		const now = new Date()
+	function getDisplayStatus(r: Reservation, now: Date) {
 		const expiresAt = new Date(r.expiresAt)
 
 		if (r.status === 'HOLD' && expiresAt <= now) {
@@ -99,21 +134,34 @@ export default function ReservationsList({
 
 			<ul style={{ paddingLeft: 18 }}>
 				{reservations.map((r) => {
-					const displayStatus = getDisplayStatus(r)
-					const isExpired = displayStatus === 'EXPIRED'
-					const canConfirm =
-						r.status === 'HOLD' && new Date(r.expiresAt) > new Date()
+					const now = new Date()
+					const expiresAt = new Date(r.expiresAt)
+					const displayStatus = getDisplayStatus(r, now)
+					const statusStyle = getStatusStyle(displayStatus)
+					const activeHold = r.status === 'HOLD' && expiresAt > now
+					const canConfirm = activeHold
 					const canCancel =
-						(r.status === 'HOLD' && new Date(r.expiresAt) > new Date()) ||
-						r.status === 'CONFIRMED'
-					const canPay =
-						r.status === 'HOLD' && new Date(r.expiresAt) > new Date()
+						activeHold || r.status === 'CONFIRMED'
+					const canPay = activeHold
 
 					return (
 						<li key={r.id} style={{ marginBottom: 14 }}>
 							<b>{r.locker.code}</b>{' '}
-							<span style={{ color: isExpired ? 'crimson' : 'inherit' }}>
-								— {displayStatus}
+							<span
+								style={{
+									display: 'inline-block',
+									marginLeft: 8,
+									padding: '2px 8px',
+									border: `1px solid ${statusStyle.borderColor}`,
+									borderRadius: 999,
+									backgroundColor: statusStyle.backgroundColor,
+									color: statusStyle.color,
+									fontSize: '0.75rem',
+									fontWeight: 700,
+									lineHeight: 1.6,
+								}}
+							>
+								{displayStatus}
 							</span>
 							<br />
 							{new Date(r.startTime).toLocaleString()} →{' '}
