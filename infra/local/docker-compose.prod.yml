@@ -1,0 +1,42 @@
+services:
+  db:
+    image: postgres:16
+    container_name: locker_db_prod
+    environment:
+      POSTGRES_USER: locker
+      POSTGRES_PASSWORD: locker
+      POSTGRES_DB: locker
+    ports:
+      - "5433:5432"
+    volumes:
+      - locker_pgdata_prod:/var/lib/postgresql/data
+
+  api:
+    build:
+      context: ../../services/api
+    container_name: locker_api
+    ports:
+      - "3001:3001"
+    env_file:
+      - ../../services/api/.env
+    environment:
+      DATABASE_URL: postgresql://locker:locker@db:5432/locker?schema=public
+      CORS_ORIGIN: http://localhost:3000
+    depends_on:
+      - db
+
+  web:
+    build:
+      context: ../../services/web
+      args:
+        NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY}
+    container_name: locker_web
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY}
+    depends_on:
+      - api
+
+volumes:
+  locker_pgdata_prod:
