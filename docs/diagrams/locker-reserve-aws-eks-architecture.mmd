@@ -1,0 +1,47 @@
+flowchart LR
+	%% Locker Reserve - AWS/EKS Target Architecture
+
+	U["Admin/User Browser"] -->|HTTPS| ALB["AWS Application Load Balancer"]
+	M["Mobile App (later)"] -->|HTTPS| ALB
+
+	ALB --> WEB_SVC["Kubernetes Service: web"]
+	ALB --> API_SVC["Kubernetes Service: api"]
+
+	subgraph AWS["AWS ca-central-1"]
+		subgraph EKS["Amazon EKS Cluster"]
+			WEB_SVC --> WEB_PODS["Next.js Web Pods"]
+			API_SVC --> API_PODS["NestJS API Pods"]
+			WORKER["Worker Pods (later)"]
+		end
+
+		ECR["Amazon ECR\nlocker-reserve-web\nlocker-reserve-api"]
+		RDS[("Amazon RDS PostgreSQL\nDatabase: locker")]
+		REDIS[("Redis / ElastiCache (later)")]
+		SM["Secrets / Environment Variables\nDATABASE_URL, JWT_SECRET, STRIPE keys"]
+	end
+
+	ECR -.->|Image pull| WEB_PODS
+	ECR -.->|Image pull| API_PODS
+
+	WEB_PODS -->|API requests| API_SVC
+	API_PODS -->|Prisma / SQL| RDS
+	API_PODS -->|Cache / holds later| REDIS
+	WORKER -->|Jobs / expiry later| RDS
+	WORKER -->|Queue/cache later| REDIS
+
+	API_PODS -->|Create PaymentIntent| STRIPE["Stripe"]
+	STRIPE -->|Webhook HTTPS| ALB
+	ALB -->|/payments/webhook| API_SVC
+
+	SM -.-> API_PODS
+	SM -.-> WEB_PODS
+
+	classDef aws fill:#232f3e,stroke:#ff9900,color:#ffffff;
+	classDef app fill:#0f172a,stroke:#38bdf8,color:#ffffff;
+	classDef data fill:#052e16,stroke:#22c55e,color:#ffffff;
+	classDef external fill:#3b0764,stroke:#c084fc,color:#ffffff;
+
+	class ALB,ECR,SM aws;
+	class WEB_SVC,API_SVC,WEB_PODS,API_PODS,WORKER app;
+	class RDS,REDIS data;
+	class STRIPE external;
