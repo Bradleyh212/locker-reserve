@@ -1,0 +1,23 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: locker-api
+  namespace: locker-reserve
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: locker-api
+  template:
+    metadata:
+      labels:
+        app: locker-api
+    spec:
+      containers:
+        - name: locker-api
+          image: 512946111274.dkr.ecr.ca-central-1.amazonaws.com/locker-reserve-api:latest
+          ports:
+            - containerPort: 3001
+          envFrom:
+            - secretRef:
+                name: locker-api-secrets
