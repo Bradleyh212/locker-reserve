@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: locker-web
+  namespace: locker-reserve
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: locker-web
+  template:
+    metadata:
+      labels:
+        app: locker-web
+    spec:
+      containers:
+        - name: locker-web
+          image: 512946111274.dkr.ecr.ca-central-1.amazonaws.com/locker-reserve-web:latest
+          ports:
+            - containerPort: 3000
