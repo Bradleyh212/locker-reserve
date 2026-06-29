@@ -11,10 +11,11 @@ import {
 } from '../lib/auth'
 
 const navItems = [
-	{ href: '/', label: 'Dashboard' },
-	{ href: '/lockers', label: 'Lockers' },
-	{ href: '/reservations', label: 'Reservations' },
-	{ href: '/availability', label: 'Availability' },
+	{ href: '/', label: 'Dashboard', icon: 'D' },
+	{ href: '/lockers', label: 'Lockers', icon: 'L' },
+	{ href: '/reservations', label: 'Reservations', icon: 'R' },
+	{ href: '/availability', label: 'Availability', icon: 'A' },
+	{ href: '/book', label: 'Booking', icon: 'B' },
 ]
 
 export default function RequireAdminAuth({
@@ -72,13 +73,16 @@ export default function RequireAdminAuth({
 	}
 
 	return (
-		<div className="app-shell">
-			<header className="app-header">
-				<div className="nav-row">
-					<Link href="/" className="brand-link">
+		<div className="admin-layout">
+			<aside className="sidebar">
+				<div>
+					<div className="sidebar-brand">
+						<span className="brand-mark">LR</span>
+						<Link href="/" className="brand-link">
 						Locker Reserve
 					</Link>
-					<nav aria-label="Admin navigation" className="nav-row">
+					</div>
+					<nav aria-label="Admin navigation" className="sidebar-nav">
 						{navItems.map((item) => {
 							const active = pathname === item.href
 
@@ -86,19 +90,35 @@ export default function RequireAdminAuth({
 								<Link
 									key={item.href}
 									href={item.href}
-									className={`nav-link${active ? ' nav-link-active' : ''}`}
+									className={`sidebar-link${
+										active ? ' sidebar-link-active' : ''
+									}`}
 								>
+									<span className="nav-icon">{item.icon}</span>
 									{item.label}
 								</Link>
 							)
 						})}
 					</nav>
 				</div>
-				<button type="button" onClick={signOut} className="button button-secondary">
+				<button
+					type="button"
+					onClick={signOut}
+					className="button button-secondary"
+				>
 					Logout
 				</button>
-			</header>
-			{children}
+			</aside>
+			<div className="admin-main">
+				<header className="topbar">
+					<span className="avatar">A</span>
+					<div>
+						<p className="admin-name">Admin</p>
+						<p className="admin-role">Administrator</p>
+					</div>
+				</header>
+				{children}
+			</div>
 		</div>
 	)
 }
