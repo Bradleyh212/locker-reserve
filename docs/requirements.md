@@ -114,9 +114,14 @@ A cloud-deployed locker reservation system with an admin dashboard, reservation 
 ## Remaining Work
 
 ### Security
-- [ ] Replace localStorage JWT storage with httpOnly cookies
-- [ ] Add role-based access control
-- [ ] Add MFA for admin accounts
+- [x] Replace localStorage JWT storage with httpOnly cookies for production hardening
+
+### Product / UI
+- [x] Improve dashboard styling
+- [x] Add reservation sorting and filtering
+- [x] Add dashboard statistics
+- [x] Improve locker management UX
+- [x] Add user-facing booking flow
 
 ### DevOps
 - [ ] Add HTTPS / TLS
@@ -124,13 +129,6 @@ A cloud-deployed locker reservation system with an admin dashboard, reservation 
 - [ ] Add GitHub Actions CI/CD
 - [ ] Add production monitoring and alerts
 - [ ] Replace public API LoadBalancer with Ingress path routing
-
-### Product / UI
-- [ ] Improve dashboard styling
-- [ ] Add reservation sorting and filtering
-- [ ] Add dashboard statistics
-- [ ] Improve locker management UX
-- [ ] Add user-facing booking flow
 
 ### Payments
 - [ ] Complete full production Stripe webhook setup
