@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { apiUrl, authFetch } from '../lib/auth'
+import { getApiErrorMessage } from '../lib/ui'
 
 type Locker = {
 	id: string
@@ -61,11 +62,7 @@ export default function CreateHoldForm({
 			const data = await res.json().catch(() => null)
 
 			if (!res.ok) {
-				setError(
-					Array.isArray(data?.message)
-						? data.message.join(', ')
-						: data?.message ?? `Request failed (${res.status})`,
-				)
+				setError(getApiErrorMessage(data, `Request failed (${res.status})`))
 				return
 			}
 
@@ -81,24 +78,18 @@ export default function CreateHoldForm({
 	}
 
 	return (
-		<section style={{ marginTop: 16, marginBottom: 24 }}>
-			<h2>Create hold</h2>
+		<section className="card card-pad" style={{ marginBottom: 24 }}>
+			<h2 className="section-title">Create hold</h2>
+			<p className="metric-note" style={{ marginBottom: 16 }}>
+				Create an admin hold for an active locker. Holds expire automatically.
+			</p>
 
-			<form onSubmit={onSubmit} style={{ display: 'grid', gap: 10, maxWidth: 500 }}>
-				<label>
+			<form onSubmit={onSubmit} className="form-grid form-grid-two">
+				<label className="field">
 					Locker
 					<select
 						value={lockerId}
 						onChange={(e) => setLockerId(e.target.value)}
-						style={{
-							width: '100%',
-							padding: 10,
-							display: 'block',
-							backgroundColor: '#111',
-							color: 'white',
-							border: '1px solid #444',
-							borderRadius: 6,
-						}}
 					>
 						{activeLockers.map((locker) => (
 							<option key={locker.id} value={locker.id}>
@@ -108,32 +99,34 @@ export default function CreateHoldForm({
 					</select>
 				</label>
 
-				<label>
+				<label className="field">
 					Start time
 					<input
 						type="datetime-local"
 						value={startTime}
 						onChange={(e) => setStartTime(e.target.value)}
-						style={{ width: '100%', padding: 8, display: 'block' }}
 					/>
 				</label>
 
-				<label>
+				<label className="field">
 					End time
 					<input
 						type="datetime-local"
 						value={endTime}
 						onChange={(e) => setEndTime(e.target.value)}
-						style={{ width: '100%', padding: 8, display: 'block' }}
 					/>
 				</label>
 
-				<button type="submit" disabled={loading || !lockerId || !startTime || !endTime}>
+				<button
+					type="submit"
+					disabled={loading || !lockerId || !startTime || !endTime}
+					className="button"
+				>
 					{loading ? 'Creating...' : 'Create hold'}
 				</button>
 
-				{error ? <p style={{ color: 'crimson' }}>{error}</p> : null}
-				{success ? <p style={{ color: 'green' }}>{success}</p> : null}
+				{error ? <p className="alert alert-error">{error}</p> : null}
+				{success ? <p className="alert alert-success">{success}</p> : null}
 			</form>
 		</section>
 	)

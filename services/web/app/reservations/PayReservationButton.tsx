@@ -9,6 +9,7 @@ import {
 	useStripe,
 } from '@stripe/react-stripe-js'
 import { apiUrl, authFetch } from '../lib/auth'
+import { getApiErrorMessage } from '../lib/ui'
 
 const stripePromise = loadStripe(
 	process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!,
@@ -39,7 +40,7 @@ export default function PayReservationButton({
 			const data = await res.json().catch(() => null)
 
 			if (!res.ok) {
-				setError(data?.message ?? `Request failed (${res.status})`)
+				setError(getApiErrorMessage(data, `Request failed (${res.status})`))
 				return
 			}
 
@@ -52,24 +53,16 @@ export default function PayReservationButton({
 	}
 
 	return (
-		<div style={{ marginTop: 8 }}>
+		<div>
 			<button
 				onClick={startPayment}
 				disabled={loading}
-				style={{
-					padding: '8px 14px',
-					backgroundColor: '#1f2f1f',
-					color: 'white',
-					border: '1px solid #44aa44',
-					borderRadius: 6,
-					cursor: loading ? 'not-allowed' : 'pointer',
-					opacity: loading ? 0.7 : 1,
-				}}
+				className="button"
 			>
 				{loading ? 'Preparing payment...' : 'Pay'}
 			</button>
 
-			{error ? <p style={{ color: 'crimson' }}>{error}</p> : null}
+			{error ? <p className="alert alert-error">{error}</p> : null}
 
 			{clientSecret ? (
 				<Elements stripe={stripePromise} options={{ clientSecret }}>
@@ -129,33 +122,26 @@ function PaymentForm({
 
 	if (success) {
 		return (
-			<p style={{ color: 'green', marginTop: 12 }}>
+			<p className="alert alert-success" style={{ marginTop: 12 }}>
 				Payment completed successfully. Refreshing reservation status...
 			</p>
 		)
 	}
 
 	return (
-		<form onSubmit={submitPayment} style={{ marginTop: 12 }}>
+		<form onSubmit={submitPayment} className="card card-pad" style={{ marginTop: 12 }}>
 			<PaymentElement />
 
 			<button
 				type="submit"
 				disabled={!stripe || loading}
-				style={{
-					marginTop: 12,
-					padding: '8px 14px',
-					backgroundColor: '#1f1f1f',
-					color: 'white',
-					border: '1px solid #555',
-					borderRadius: 6,
-					cursor: loading ? 'not-allowed' : 'pointer',
-				}}
+				className="button"
+				style={{ marginTop: 12 }}
 			>
 				{loading ? 'Processing...' : 'Submit payment'}
 			</button>
 
-			{error ? <p style={{ color: 'crimson' }}>{error}</p> : null}
+			{error ? <p className="alert alert-error">{error}</p> : null}
 		</form>
 	)
 }

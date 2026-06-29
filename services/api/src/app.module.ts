@@ -8,6 +8,7 @@ import { ReservationsModule } from './reservations/reservations.module'
 import { PaymentsModule } from './payments/payments.module'
 import { AuthModule } from './auth/auth.module'
 import { RedisCacheModule } from './cache/redis-cache.module'
+import { DashboardModule } from './dashboard/dashboard.module'
 
 @Module({
 	imports: [
@@ -15,6 +16,7 @@ import { RedisCacheModule } from './cache/redis-cache.module'
 		RedisCacheModule,
 		PrismaModule,
 		AuthModule,
+		DashboardModule,
 		LockersModule,
 		ReservationsModule,
 		PaymentsModule,

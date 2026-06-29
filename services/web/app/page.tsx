@@ -1,74 +1,139 @@
+'use client'
+
+import { useCallback, useEffect, useState } from 'react'
+import Link from 'next/link'
 import RequireAdminAuth from './components/RequireAdminAuth'
+import { apiUrl, authFetch } from './lib/auth'
+
+type DashboardStats = {
+	totalLockers: number
+	activeLockers: number
+	inactiveLockers: number
+	activeReservations: number
+	pendingHolds: number
+	confirmedReservations: number
+	expiredReservations: number
+	cancelledReservations: number
+}
 
 export default function HomePage() {
-	const cards = [
+	return (
+		<RequireAdminAuth>
+			<Dashboard />
+		</RequireAdminAuth>
+	)
+}
+
+function Dashboard() {
+	const [stats, setStats] = useState<DashboardStats | null>(null)
+	const [loading, setLoading] = useState(true)
+	const [error, setError] = useState<string | null>(null)
+
+	const loadStats = useCallback(async () => {
+		setError(null)
+		setLoading(true)
+
+		try {
+			const res = await authFetch(apiUrl('/dashboard/stats'), {
+				cache: 'no-store',
+			})
+			const data = await res.json().catch(() => null)
+
+			if (!res.ok) {
+				setError(data?.message ?? `Stats request failed (${res.status})`)
+				return
+			}
+
+			setStats(data)
+		} catch (e: any) {
+			setError(e?.message ?? 'Network error')
+		} finally {
+			setLoading(false)
+		}
+	}, [])
+
+	useEffect(() => {
+		loadStats()
+	}, [loadStats])
+
+	const statCards: Array<[string, number, string]> = stats
+		? [
+				['Total lockers', stats.totalLockers, 'All lockers in inventory'],
+				['Active lockers', stats.activeLockers, 'Available for booking'],
+				['Inactive lockers', stats.inactiveLockers, 'Hidden from booking'],
+				['Active reservations', stats.activeReservations, 'Holds and confirmed'],
+				['Pending holds', stats.pendingHolds, 'Awaiting payment or confirmation'],
+				['Confirmed', stats.confirmedReservations, 'Booked reservations'],
+				['Expired', stats.expiredReservations, 'Expired holds'],
+				['Cancelled', stats.cancelledReservations, 'Cancelled reservations'],
+			]
+		: []
+
+	const actionCards = [
 		{
-			title: 'Lockers',
-			description: 'Create lockers and manage active/inactive status.',
+			title: 'Manage lockers',
+			description: 'Create lockers, change locations, and control active status.',
 			href: '/lockers',
 		},
 		{
-			title: 'Reservations',
-			description: 'Create holds, confirm reservations, and cancel bookings.',
+			title: 'Review reservations',
+			description: 'Filter holds, confirmations, cancellations, and expired bookings.',
 			href: '/reservations',
 		},
 		{
-			title: 'Availability',
-			description: 'Check which lockers are available for a specific time range.',
+			title: 'Check availability',
+			description: 'Search available lockers for a location and time range.',
 			href: '/availability',
+		},
+		{
+			title: 'Public booking',
+			description: 'Open the user-facing booking and payment flow.',
+			href: '/book',
 		},
 	]
 
 	return (
-		<RequireAdminAuth>
-			<main
-				style={{
-					padding: 32,
-					maxWidth: 1000,
-					margin: '0 auto',
-				}}
-			>
-				<section style={{ marginBottom: 32 }}>
-					<h1 style={{ fontSize: '2.25rem', marginBottom: 12 }}>
-						Locker Reserve Dashboard
-					</h1>
-					<p style={{ fontSize: '1rem', opacity: 0.85, maxWidth: 700 }}>
-						This is the admin dashboard for managing lockers, reservations,
-						and availability from one place.
+		<main className="page">
+			<section className="page-header">
+				<div>
+					<p className="eyebrow">Admin overview</p>
+					<h1 className="page-title">Locker Reserve Dashboard</h1>
+					<p className="lede">
+						Monitor locker capacity, reservation activity, and core admin
+						workflows from one place.
 					</p>
-				</section>
+				</div>
+				<button className="button button-secondary" onClick={loadStats}>
+					Refresh
+				</button>
+			</section>
 
-				<section
-					style={{
-						display: 'grid',
-						gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-						gap: 16,
-					}}
-				>
-					{cards.map((card) => (
-						<a
-							key={card.href}
-							href={card.href}
-							style={{
-								display: 'block',
-								padding: 20,
-								border: '1px solid #333',
-								borderRadius: 8,
-								backgroundColor: '#111',
-								color: 'white',
-								textDecoration: 'none',
-							}}
-						>
-							<h2 style={{ marginBottom: 10, fontSize: '1.25rem' }}>
-								{card.title}
-							</h2>
-							<p style={{ opacity: 0.8, lineHeight: 1.5 }}>
-								{card.description}
-							</p>
-						</a>
+			{loading ? <p className="loading-state">Loading dashboard stats...</p> : null}
+			{error ? <p className="alert alert-error">{error}</p> : null}
+
+			{stats ? (
+				<section className="grid stats-grid" style={{ marginBottom: 28 }}>
+					{statCards.map(([label, value, note]) => (
+						<article className="card stat-card" key={label}>
+							<p className="stat-label">{label}</p>
+							<p className="stat-value">{value}</p>
+							<p className="metric-note">{note}</p>
+						</article>
 					))}
 				</section>
-			</main>
-		</RequireAdminAuth>
+			) : null}
+
+			<section>
+				<h2 className="section-title">Workflows</h2>
+				<div className="grid action-grid">
+					{actionCards.map((card) => (
+						<Link key={card.href} href={card.href} className="card card-pad">
+							<h3 style={{ margin: '0 0 8px' }}>{card.title}</h3>
+							<p className="metric-note">{card.description}</p>
+						</Link>
+					))}
+				</div>
+			</section>
+		</main>
 	)
 }

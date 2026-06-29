@@ -6,6 +6,7 @@ A full-stack locker reservation system with support for:
 - automatic expiration
 - availability search
 - admin authentication
+- public booking and Stripe checkout
 
 Built with Next.js, NestJS, and PostgreSQL.
 
@@ -16,16 +17,23 @@ Built with Next.js, NestJS, and PostgreSQL.
 ### **Lockers**
 - Create lockers
 - Activate / deactivate lockers
+- Public availability only includes active lockers
 
 ### **Reservations**
 - Create HOLD (temporary reservation)
 - Confirm reservation (HOLD → CONFIRMED)
 - Cancel reservation
 - Auto-expire holds (background job)
+- Sort and filter reservations by status, locker, and date range
 
 ### **Availability**
 - Check available lockers for a time range
 - Filter by location
+
+### **Public Booking**
+- Public booking flow at `/book`
+- Users can search available lockers, create a hold, and start Stripe payment
+- No user accounts are required
 
 ### **Admin Authentication**
 - Status: implemented for the admin MVP
@@ -62,12 +70,13 @@ Built with Next.js, NestJS, and PostgreSQL.
 
 ## **Reservation Flow**
 
-1. User creates a HOLD from the UI
+1. User searches availability from `/book`
 2. API validates the time range and availability
-3. Reservation is stored in the database
-4. UI updates and displays the reservation
-5. User can confirm or cancel the reservation
-6. Background job automatically expires expired holds
+3. User selects a locker and creates a HOLD
+4. User starts Stripe checkout for the hold
+5. Stripe webhook confirms paid reservations
+6. Admin can review, confirm, or cancel reservations
+7. Background job automatically expires expired holds
 
 ----------------------------------------------------------------------------
 
@@ -134,3 +143,7 @@ dependencies, applies Prisma migrations, and starts:
 
 After logging in at `/login`, the browser should receive an `httpOnly`
 `locker_reserve_admin` cookie. No JWT should appear in `localStorage`.
+
+Use `/book` to test the public booking flow. The page uses the public
+availability, hold, and payment-intent endpoints while preserving the admin
+routes behind cookie-based authentication.

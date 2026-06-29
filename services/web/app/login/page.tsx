@@ -4,6 +4,7 @@ import type { FormEvent } from 'react'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { apiUrl, fetchAdminSession } from '../lib/auth'
+import { getApiErrorMessage } from '../lib/ui'
 
 export default function LoginPage() {
 	const router = useRouter()
@@ -51,10 +52,12 @@ export default function LoginPage() {
 
 			if (!res.ok || !data?.authenticated) {
 				setError(
-					data?.message ??
+					getApiErrorMessage(
+						data,
 						(res.status === 401
 							? 'Invalid email or password'
 							: `Login failed (${res.status})`),
+					),
 				)
 				return
 			}
@@ -68,40 +71,47 @@ export default function LoginPage() {
 	}
 
 	return (
-		<main style={{ padding: 24, maxWidth: 420, margin: '0 auto' }}>
-			<h1>Admin login</h1>
+		<main className="public-page" style={{ maxWidth: 480 }}>
+			<section className="page-header">
+				<div>
+					<p className="eyebrow">Admin access</p>
+					<h1 className="page-title">Sign in</h1>
+					<p className="lede">
+						Manage lockers, reservations, availability, and payments.
+					</p>
+				</div>
+			</section>
 
-			<form onSubmit={onSubmit} style={{ display: 'grid', gap: 12 }}>
-				<label>
+			<form onSubmit={onSubmit} className="card card-pad form-grid">
+				<label className="field">
 					Email
 					<input
 						type="email"
 						value={email}
 						onChange={(e) => setEmail(e.target.value)}
 						autoComplete="email"
-						style={{ width: '100%', padding: 8, display: 'block' }}
 					/>
 				</label>
 
-				<label>
+				<label className="field">
 					Password
 					<input
 						type="password"
 						value={password}
 						onChange={(e) => setPassword(e.target.value)}
 						autoComplete="current-password"
-						style={{ width: '100%', padding: 8, display: 'block' }}
 					/>
 				</label>
 
 				<button
 					type="submit"
 					disabled={loading || !email.trim() || !password}
+					className="button"
 				>
 					{loading ? 'Signing in...' : 'Sign in'}
 				</button>
 
-				{error ? <p style={{ color: 'crimson' }}>{error}</p> : null}
+				{error ? <p className="alert alert-error">{error}</p> : null}
 			</form>
 		</main>
 	)

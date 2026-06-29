@@ -65,52 +65,20 @@ export default function RequireAdminAuth({
 
 	if (checking || !authenticated) {
 		return (
-			<main style={{ padding: 24, maxWidth: 720 }}>
-				<p>Checking session...</p>
+			<main className="page">
+				<p className="loading-state">Checking session...</p>
 			</main>
 		)
 	}
 
 	return (
-		<>
-			<header
-				style={{
-					padding: '16px 24px',
-					borderBottom: '1px solid #333',
-					display: 'flex',
-					flexWrap: 'wrap',
-					gap: 16,
-					justifyContent: 'space-between',
-					alignItems: 'center',
-				}}
-			>
-				<div
-					style={{
-						display: 'flex',
-						flexWrap: 'wrap',
-						gap: 14,
-						alignItems: 'center',
-					}}
-				>
-					<Link
-						href="/"
-						style={{
-							color: 'inherit',
-							fontWeight: 700,
-							textDecoration: 'none',
-						}}
-					>
+		<div className="app-shell">
+			<header className="app-header">
+				<div className="nav-row">
+					<Link href="/" className="brand-link">
 						Locker Reserve
 					</Link>
-					<nav
-						aria-label="Admin navigation"
-						style={{
-							display: 'flex',
-							flexWrap: 'wrap',
-							gap: 10,
-							alignItems: 'center',
-						}}
-					>
+					<nav aria-label="Admin navigation" className="nav-row">
 						{navItems.map((item) => {
 							const active = pathname === item.href
 
@@ -118,14 +86,7 @@ export default function RequireAdminAuth({
 								<Link
 									key={item.href}
 									href={item.href}
-									style={{
-										color: active ? 'white' : '#c7c7c7',
-										textDecoration: 'none',
-										borderBottom: active
-											? '2px solid white'
-											: '2px solid transparent',
-										paddingBottom: 2,
-									}}
+									className={`nav-link${active ? ' nav-link-active' : ''}`}
 								>
 									{item.label}
 								</Link>
@@ -133,11 +94,11 @@ export default function RequireAdminAuth({
 						})}
 					</nav>
 				</div>
-				<button type="button" onClick={signOut}>
+				<button type="button" onClick={signOut} className="button button-secondary">
 					Logout
 				</button>
 			</header>
 			{children}
-		</>
+		</div>
 	)
 }

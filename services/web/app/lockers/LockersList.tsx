@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { apiUrl, authFetch } from '../lib/auth'
+import { formatDateTime, getApiErrorMessage } from '../lib/ui'
 
 type Locker = {
 	id: string
@@ -23,6 +24,15 @@ export default function LockersList({
 	const [error, setError] = useState<string | null>(null)
 
 	async function toggleActive(locker: Locker) {
+		if (
+			locker.isActive &&
+			!window.confirm(
+				`Deactivate locker ${locker.code}? It will be hidden from public availability searches.`,
+			)
+		) {
+			return
+		}
+
 		setError(null)
 		setLoadingId(locker.id)
 
@@ -36,7 +46,7 @@ export default function LockersList({
 			const data = await res.json().catch(() => null)
 
 			if (!res.ok) {
-				setError(data?.message ?? `Request failed (${res.status})`)
+				setError(getApiErrorMessage(data, `Request failed (${res.status})`))
 				return
 			}
 
@@ -49,30 +59,74 @@ export default function LockersList({
 	}
 
 	return (
-		<section style={{ marginTop: 16 }}>
-			<h2>Lockers</h2>
+		<section>
+			<div className="page-header" style={{ marginBottom: 12 }}>
+				<div>
+					<h2 className="section-title">Lockers</h2>
+					<p className="metric-note">
+						{lockers.length} locker{lockers.length === 1 ? '' : 's'} in inventory
+					</p>
+				</div>
+			</div>
 
-			{error ? <p style={{ color: 'crimson' }}>{error}</p> : null}
+			{error ? <p className="alert alert-error">{error}</p> : null}
 
-			<ul style={{ paddingLeft: 18 }}>
-				{lockers.map((l) => (
-					<li key={l.id} style={{ marginBottom: 10 }}>
-						<b>{l.code}</b> — {l.location} —{' '}
-						<span style={{ opacity: 0.8 }}>{l.isActive ? 'Active' : 'Inactive'}</span>{' '}
-						<button
-							onClick={() => toggleActive(l)}
-							disabled={loadingId === l.id}
-							style={{ marginLeft: 10 }}
-						>
-							{loadingId === l.id
-								? 'Updating...'
-								: l.isActive
-									? 'Deactivate'
-									: 'Activate'}
-						</button>
-					</li>
-				))}
-			</ul>
+			{lockers.length === 0 ? (
+				<p className="empty-state">No lockers have been created yet.</p>
+			) : (
+				<div className="table-wrap">
+					<table className="table">
+						<thead>
+							<tr>
+								<th>Code</th>
+								<th>Location</th>
+								<th>Status</th>
+								<th>Updated</th>
+								<th>Action</th>
+							</tr>
+						</thead>
+						<tbody>
+							{lockers.map((locker) => (
+								<tr key={locker.id}>
+									<td>
+										<strong>{locker.code}</strong>
+									</td>
+									<td>{locker.location}</td>
+									<td>
+										<span
+											className={
+												locker.isActive
+													? 'badge badge-success'
+													: 'badge badge-muted'
+											}
+										>
+											{locker.isActive ? 'Active' : 'Inactive'}
+										</span>
+									</td>
+									<td>{formatDateTime(locker.updatedAt)}</td>
+									<td>
+										<button
+											onClick={() => toggleActive(locker)}
+											disabled={loadingId === locker.id}
+											className={
+												locker.isActive
+													? 'button button-danger'
+													: 'button button-secondary'
+											}
+										>
+											{loadingId === locker.id
+												? 'Updating...'
+												: locker.isActive
+													? 'Deactivate'
+													: 'Activate'}
+										</button>
+									</td>
+								</tr>
+							))}
+						</tbody>
+					</table>
+				</div>
+			)}
 		</section>
 	)
 }

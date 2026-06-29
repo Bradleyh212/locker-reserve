@@ -54,15 +54,24 @@ function LockersAdmin() {
 	}, [loadLockers])
 
 	return (
-		<main style={{ padding: 24, maxWidth: 720 }}>
-			<h1>Lockers</h1>
+		<main className="page">
+			<section className="page-header">
+				<div>
+					<p className="eyebrow">Inventory</p>
+					<h1 className="page-title">Lockers</h1>
+					<p className="lede">
+						Manage locker inventory and control which lockers are available
+						for reservations.
+					</p>
+				</div>
+			</section>
 
 			<CreateLockerForm onChanged={loadLockers} />
 
-			<hr style={{ margin: '24px 0' }} />
+			<div style={{ height: 24 }} />
 
-			{loading ? <p>Loading lockers...</p> : null}
-			{error ? <p style={{ color: 'crimson' }}>{error}</p> : null}
+			{loading ? <p className="loading-state">Loading lockers...</p> : null}
+			{error ? <p className="alert alert-error">{error}</p> : null}
 			{!loading && !error ? (
 				<LockersList lockers={lockers} onChanged={loadLockers} />
 			) : null}

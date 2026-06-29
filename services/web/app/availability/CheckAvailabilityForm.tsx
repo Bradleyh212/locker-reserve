@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { apiUrl, authFetch } from '../lib/auth'
+import { getApiErrorMessage } from '../lib/ui'
 import AvailabilityResults from './AvailabilityResults'
 
 type Locker = {
@@ -56,7 +57,7 @@ export default function CheckAvailabilityForm() {
 			const data = await res.json().catch(() => null)
 
 			if (!res.ok) {
-				setError(data?.message ?? `Request failed (${res.status})`)
+				setError(getApiErrorMessage(data, `Request failed (${res.status})`))
 				setResults([])
 				return
 			}
@@ -71,56 +72,47 @@ export default function CheckAvailabilityForm() {
 	}
 
 	return (
-		<section style={{ marginTop: 16 }}>
-			<form onSubmit={onSubmit} style={{ display: 'grid', gap: 10, maxWidth: 500 }}>
-				<label>
+		<section>
+			<form onSubmit={onSubmit} className="card card-pad form-grid">
+				<div className="form-grid form-grid-two">
+					<label className="field">
 					Start time
 					<input
 						type="datetime-local"
 						value={startTime}
 						onChange={(e) => setStartTime(e.target.value)}
-						style={{ width: '100%', padding: 8, display: 'block' }}
 					/>
 				</label>
 
-				<label>
+					<label className="field">
 					End time
 					<input
 						type="datetime-local"
 						value={endTime}
 						onChange={(e) => setEndTime(e.target.value)}
-						style={{ width: '100%', padding: 8, display: 'block' }}
 					/>
 				</label>
 
-				<label>
+					<label className="field">
 					Location (optional)
 					<input
 						type="text"
 						value={location}
 						onChange={(e) => setLocation(e.target.value)}
 						placeholder="Site - Floor 1"
-						style={{ width: '100%', padding: 8, display: 'block' }}
 					/>
 				</label>
+				</div>
 
 				<button
 					type="submit"
 					disabled={loading}
-					style={{
-						padding: '8px 14px',
-						backgroundColor: '#1f1f1f',
-						color: 'white',
-						border: '1px solid #555',
-						borderRadius: 6,
-						cursor: loading ? 'not-allowed' : 'pointer',
-						opacity: loading ? 0.7 : 1,
-					}}
+					className="button"
 				>
 					{loading ? 'Checking...' : 'Check Availability'}
 				</button>
 
-				{error ? <p style={{ color: 'crimson' }}>{error}</p> : null}
+				{error ? <p className="alert alert-error">{error}</p> : null}
 			</form>
 
 			{searched && !error ? <AvailabilityResults lockers={results} /> : null}
