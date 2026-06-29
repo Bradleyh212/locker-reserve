@@ -51,17 +51,25 @@ type MetricCard = {
 	label: string
 	value: number
 	note: string
-	icon: string
+	icon: MetricIconName
 	color: string
 	soft: string
 	toneClass?: string
 	data: number[]
 }
 
+type MetricIconName =
+	| 'lockers'
+	| 'activeLockers'
+	| 'reservations'
+	| 'holds'
+	| 'confirmed'
+	| 'cancelled'
+
 const statusColors: Record<string, string> = {
 	CONFIRMED: '#1f6fff',
-	HOLD: '#20b66d',
-	EXPIRED: '#ff8a1f',
+	HOLD: '#ff8a1f',
+	EXPIRED: '#8b5cf6',
 	CANCELLED: '#ef4444',
 }
 
@@ -116,7 +124,7 @@ function Dashboard() {
 					label: 'Total Lockers',
 					value: stats.totalLockers,
 					note: `${stats.inactiveLockers} inactive`,
-					icon: 'LR',
+					icon: 'lockers',
 					color: '#5b2cf0',
 					soft: '#efeaff',
 					data: smoothData(stats.totalLockers, reservationTrend),
@@ -130,7 +138,7 @@ function Dashboard() {
 									(stats.activeLockers / stats.totalLockers) * 100,
 								)}% of total`
 							: 'No lockers yet',
-					icon: 'AL',
+					icon: 'activeLockers',
 					color: '#20b66d',
 					soft: '#e8f8ef',
 					toneClass: 'metric-positive',
@@ -140,7 +148,7 @@ function Dashboard() {
 					label: 'Active Reservations',
 					value: stats.activeReservations,
 					note: 'Holds and confirmed',
-					icon: 'AR',
+					icon: 'reservations',
 					color: '#1f6fff',
 					soft: '#e8f1ff',
 					toneClass: 'metric-positive',
@@ -150,7 +158,7 @@ function Dashboard() {
 					label: 'Pending Holds',
 					value: stats.pendingHolds,
 					note: 'Expiring soon',
-					icon: 'PH',
+					icon: 'holds',
 					color: '#ff8a1f',
 					soft: '#fff1e3',
 					toneClass: 'metric-warning',
@@ -160,7 +168,7 @@ function Dashboard() {
 					label: 'Confirmed Reservations',
 					value: stats.confirmedReservations,
 					note: 'Paid or manually confirmed',
-					icon: 'CR',
+					icon: 'confirmed',
 					color: '#1f6fff',
 					soft: '#e8f1ff',
 					toneClass: 'metric-positive',
@@ -170,7 +178,7 @@ function Dashboard() {
 					label: 'Cancelled Reservations',
 					value: stats.cancelledReservations,
 					note: `${stats.expiredReservations} expired`,
-					icon: 'CX',
+					icon: 'cancelled',
 					color: '#ef4444',
 					soft: '#ffe9e9',
 					toneClass: 'metric-negative',
@@ -239,8 +247,10 @@ function MetricCardView({ card }: { card: MetricCard }) {
 			}
 		>
 			<div className="stat-topline">
-				<span className="stat-icon">{card.icon}</span>
 				<p className="stat-label">{card.label}</p>
+				<span className="stat-icon" aria-hidden="true">
+					<MetricIcon icon={card.icon} />
+				</span>
 			</div>
 			<p className="stat-value">{card.value}</p>
 			<p className={`metric-note ${card.toneClass ?? ''}`}>{card.note}</p>
@@ -250,20 +260,68 @@ function MetricCardView({ card }: { card: MetricCard }) {
 }
 
 function Sparkline({ data, color }: { data: number[]; color: string }) {
-	const points = getChartPoints(data.length ? data : [0], 120, 34, 3)
+	const points = getChartPoints(data.length ? data : [0], 120, 24, 3)
 
 	return (
-		<svg className="sparkline" viewBox="0 0 120 34" aria-hidden="true">
+		<svg className="sparkline" viewBox="0 0 120 24" aria-hidden="true">
 			<polyline
 				fill="none"
 				points={points}
 				stroke={color}
 				strokeLinecap="round"
 				strokeLinejoin="round"
-				strokeWidth="3"
+				strokeWidth="2.2"
 			/>
 		</svg>
 	)
+}
+
+function MetricIcon({ icon }: { icon: MetricIconName }) {
+	switch (icon) {
+		case 'activeLockers':
+			return (
+				<svg viewBox="0 0 24 24" fill="none">
+					<path d="M5 5h14v14H5z" stroke="currentColor" strokeWidth="1.8" />
+					<path d="M12 5v14M8.5 9H10M8.5 13H10M14.5 9H16M14.5 13H16" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+				</svg>
+			)
+		case 'reservations':
+			return (
+				<svg viewBox="0 0 24 24" fill="none">
+					<rect x="4" y="5" width="16" height="15" rx="2" stroke="currentColor" strokeWidth="1.8" />
+					<path d="M8 3.5v3M16 3.5v3M4 10h16M8 15h4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+				</svg>
+			)
+		case 'holds':
+			return (
+				<svg viewBox="0 0 24 24" fill="none">
+					<circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.8" />
+					<path d="M12 7.5V12l3 2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+				</svg>
+			)
+		case 'confirmed':
+			return (
+				<svg viewBox="0 0 24 24" fill="none">
+					<circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.8" />
+					<path d="m8.5 12.3 2.2 2.2 4.8-5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+				</svg>
+			)
+		case 'cancelled':
+			return (
+				<svg viewBox="0 0 24 24" fill="none">
+					<circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.8" />
+					<path d="m9 9 6 6M15 9l-6 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+				</svg>
+			)
+		case 'lockers':
+		default:
+			return (
+				<svg viewBox="0 0 24 24" fill="none">
+					<rect x="5" y="4" width="14" height="16" rx="2" stroke="currentColor" strokeWidth="1.8" />
+					<path d="M12 4v16M8.5 8h1.5M8.5 12h1.5M14.5 8H16M14.5 12H16" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+				</svg>
+			)
+	}
 }
 
 function LineChart({
@@ -367,40 +425,71 @@ function LineChart({
 }
 
 function DonutChart({ data }: { data: StatusBreakdown[] }) {
-	const total = data.reduce((sum, item) => sum + item.count, 0)
-	let offset = 0
+	const chartData = [...data].sort(
+		(a, b) => getStatusSortValue(a.status) - getStatusSortValue(b.status),
+	)
+	const total = chartData.reduce((sum, item) => sum + item.count, 0)
+	const center = 110
+	const outerRadius = 82
+	const innerRadius = 52
+	const activeStatusCount = chartData.filter((item) => item.count > 0).length
+	const donutSegments = chartData.reduce<{
+		startAngle: number
+		segments: Array<{
+			color: string
+			path: string
+			status: string
+		}>
+	}>(
+		(acc, item) => {
+			if (total === 0 || item.count === 0) {
+				return acc
+			}
+
+			const sweep = (item.count / total) * 360
+			const endAngle = acc.startAngle + sweep
+			const gap = activeStatusCount > 1 && sweep > 4 ? 1.6 : 0
+			const path = describeDonutSegment(
+				center,
+				center,
+				outerRadius,
+				innerRadius,
+				acc.startAngle + gap / 2,
+				endAngle - gap / 2,
+			)
+
+			return {
+				startAngle: endAngle,
+				segments: [
+					...acc.segments,
+					{
+						color: statusColors[item.status] ?? '#60708a',
+						path,
+						status: item.status,
+					},
+				],
+			}
+		},
+		{ startAngle: 0, segments: [] },
+	).segments
 
 	return (
 		<div className="donut-layout">
 			<svg className="donut-chart" viewBox="0 0 220 220" role="img">
 				<title>Reservation status distribution</title>
 				<circle
-					cx="110"
-					cy="110"
-					fill="none"
-					r="74"
-					stroke="#eef2f7"
-					strokeWidth="34"
+					cx={center}
+					cy={center}
+					fill="#eef2f7"
+					r={outerRadius}
 				/>
-				{data.map((item) => {
-					const percentage = total > 0 ? (item.count / total) * 100 : 0
-					const currentOffset = offset
-					offset += percentage
-
+				<circle cx={center} cy={center} fill="#fff" r={innerRadius} />
+				{donutSegments.map((segment) => {
 					return (
-						<circle
-							key={item.status}
-							cx="110"
-							cy="110"
-							fill="none"
-							pathLength="100"
-							r="74"
-							stroke={statusColors[item.status] ?? '#60708a'}
-							strokeDasharray={`${percentage} ${100 - percentage}`}
-							strokeDashoffset={-currentOffset}
-							strokeLinecap="butt"
-							strokeWidth="34"
-							transform="rotate(-90 110 110)"
+						<path
+							key={segment.status}
+							d={segment.path}
+							fill={segment.color}
 						/>
 					)
 				})}
@@ -425,7 +514,7 @@ function DonutChart({ data }: { data: StatusBreakdown[] }) {
 				</text>
 			</svg>
 			<div className="donut-legend">
-				{data.map((item) => {
+				{chartData.map((item) => {
 					const percentage = total > 0 ? (item.count / total) * 100 : 0
 
 					return (
@@ -446,6 +535,60 @@ function DonutChart({ data }: { data: StatusBreakdown[] }) {
 			</div>
 		</div>
 	)
+}
+
+function getStatusSortValue(status: string) {
+	switch (status) {
+		case 'CONFIRMED':
+			return 1
+		case 'HOLD':
+			return 2
+		case 'EXPIRED':
+			return 3
+		case 'CANCELLED':
+			return 4
+		default:
+			return 99
+	}
+}
+
+function describeDonutSegment(
+	cx: number,
+	cy: number,
+	outerRadius: number,
+	innerRadius: number,
+	startAngle: number,
+	endAngle: number,
+) {
+	const cappedEndAngle =
+		endAngle - startAngle >= 360 ? startAngle + 359.99 : endAngle
+	const outerStart = polarToCartesian(cx, cy, outerRadius, startAngle)
+	const outerEnd = polarToCartesian(cx, cy, outerRadius, cappedEndAngle)
+	const innerEnd = polarToCartesian(cx, cy, innerRadius, cappedEndAngle)
+	const innerStart = polarToCartesian(cx, cy, innerRadius, startAngle)
+	const largeArcFlag = cappedEndAngle - startAngle > 180 ? 1 : 0
+
+	return [
+		`M ${outerStart.x} ${outerStart.y}`,
+		`A ${outerRadius} ${outerRadius} 0 ${largeArcFlag} 1 ${outerEnd.x} ${outerEnd.y}`,
+		`L ${innerEnd.x} ${innerEnd.y}`,
+		`A ${innerRadius} ${innerRadius} 0 ${largeArcFlag} 0 ${innerStart.x} ${innerStart.y}`,
+		'Z',
+	].join(' ')
+}
+
+function polarToCartesian(
+	cx: number,
+	cy: number,
+	radius: number,
+	angle: number,
+) {
+	const radians = ((angle - 90) * Math.PI) / 180
+
+	return {
+		x: Number((cx + radius * Math.cos(radians)).toFixed(3)),
+		y: Number((cy + radius * Math.sin(radians)).toFixed(3)),
+	}
 }
 
 function RecentReservationsTable({
