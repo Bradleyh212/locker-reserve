@@ -8,12 +8,18 @@ import { Cron } from '@nestjs/schedule'
 import { PrismaService } from '../prisma/prisma.service'
 import { CreateHoldDto } from './dto/create-hold.dto'
 import { ReservationStatus } from '@prisma/client'
+import { RedisCacheService } from '../cache/redis-cache.service'
+
+const LOCKERS_AVAILABILITY_CACHE_PATTERN = 'lockers:availability:*'
 
 @Injectable()
 export class ReservationsService {
 	private readonly logger = new Logger(ReservationsService.name)
 
-	constructor(private prisma: PrismaService) {}
+	constructor(
+		private prisma: PrismaService,
+		private cache: RedisCacheService,
+	) {}
 
 	async createHold(dto: CreateHoldDto) {
 		const start = new Date(dto.startTime)
@@ -68,7 +74,7 @@ export class ReservationsService {
 
 		const expiresAt = new Date(Date.now() + 10 * 60 * 1000)
 
-		return this.prisma.reservation.create({
+		const reservation = await this.prisma.reservation.create({
 			data: {
 				lockerId: dto.lockerId,
 				startTime: start,
@@ -80,6 +86,10 @@ export class ReservationsService {
 				locker: true,
 			},
 		})
+
+		await this.invalidateAvailabilityCache()
+
+		return reservation
 	}
 
 	findAll() {
@@ -99,21 +109,23 @@ export class ReservationsService {
 		}
 
 		if (reservation.status !== ReservationStatus.HOLD) {
-			throw new BadRequestException(
-				'Only HOLD reservations can be confirmed',
-			)
+			throw new BadRequestException('Only HOLD reservations can be confirmed')
 		}
 
 		if (reservation.expiresAt <= new Date()) {
 			throw new BadRequestException('Hold has expired')
 		}
 
-		return this.prisma.reservation.update({
+		const updated = await this.prisma.reservation.update({
 			where: { id },
 			data: {
 				status: ReservationStatus.CONFIRMED,
 			},
 		})
+
+		await this.invalidateAvailabilityCache()
+
+		return updated
 	}
 
 	async cancel(id: string) {
@@ -136,12 +148,16 @@ export class ReservationsService {
 			throw new BadRequestException('Expired hold cannot be cancelled')
 		}
 
-		return this.prisma.reservation.update({
+		const updated = await this.prisma.reservation.update({
 			where: { id },
 			data: {
 				status: ReservationStatus.CANCELLED,
 			},
 		})
+
+		await this.invalidateAvailabilityCache()
+
+		return updated
 	}
 
 	@Cron('*/60 * * * * *')
@@ -160,6 +176,11 @@ export class ReservationsService {
 
 		if (result.count > 0) {
 			this.logger.log(`Expired ${result.count} hold(s)`)
+			await this.invalidateAvailabilityCache()
 		}
+	}
+
+	private async invalidateAvailabilityCache() {
+		await this.cache.deleteByPattern(LOCKERS_AVAILABILITY_CACHE_PATTERN)
 	}
 }

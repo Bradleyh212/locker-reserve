@@ -7,10 +7,12 @@ import { LockersModule } from './lockers/lockers.module'
 import { ReservationsModule } from './reservations/reservations.module'
 import { PaymentsModule } from './payments/payments.module'
 import { AuthModule } from './auth/auth.module'
+import { RedisCacheModule } from './cache/redis-cache.module'
 
 @Module({
 	imports: [
 		ScheduleModule.forRoot(),
+		RedisCacheModule,
 		PrismaModule,
 		AuthModule,
 		LockersModule,

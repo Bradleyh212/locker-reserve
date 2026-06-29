@@ -1,4 +1,19 @@
-# Locker Reservation System - Requirements
+# Locker Reservation System
+
+A cloud-deployed locker reservation system with an admin dashboard, reservation holds, Stripe payment flow, PostgreSQL persistence, Redis caching, and AWS/EKS deployment.
+
+## Architecture
+
+- Next.js Admin Dashboard
+- NestJS REST API
+- PostgreSQL on Amazon RDS
+- Redis cache
+- Docker containers
+- AWS ECR image registry
+- Amazon EKS Kubernetes cluster
+- Kubernetes Secrets, Deployments, and Services
+- AWS Load Balancers
+- Stripe payments and webhooks
 
 ## Core Features
 
@@ -6,112 +21,132 @@
 - [x] Create locker
 - [x] List lockers
 - [x] Activate / deactivate locker
+- [x] Cache locker list with Redis
+- [x] Invalidate locker cache after updates
 
 ### Reservations
-
-#### HOLD (temporary reservation)
-- [x] Create hold
-- [x] Expiration (10 minutes)
+- [x] Create temporary hold
+- [x] Hold expiration after 10 minutes
 - [x] Prevent overlapping reservations
 - [x] Prevent booking inactive lockers
-- [x] Validate time range (end > start)
-
----
-
-## Admin UI (Next.js)
-
-### Authentication
-- Status: implemented for the admin MVP.
-- [x] Add admin login page at `/login`
-- [x] Protect `/`, `/lockers`, `/reservations`, and `/availability`
-- [x] Store admin JWT client-side for MVP
-- [ ] Replace MVP `localStorage` token storage with httpOnly cookies later
-
-### Lockers
-- [x] View lockers
-- [x] Toggle locker active/inactive
-
-### Reservations
-- [x] Create hold from UI
-- [x] Display reservations
-- [x] Show expired holds
-- [x] Confirm reservation from UI
-- [x] Cancel reservation from UI
-
----
-
-## Backend (NestJS)
-
-### Admin authentication
-- Status: implemented with JWT bearer tokens for admin-only API routes.
-- [x] Add `POST /auth/login`
-- [x] Verify admin password with bcrypt hash
-- [x] Load `ADMIN_EMAIL`, `ADMIN_PASSWORD_HASH`, and `JWT_SECRET` from environment
-- [x] Protect locker routes with JWT guard
-- [x] Protect reservation routes with JWT guard
-- [x] Protect `POST /payments/create-intent` with JWT guard
-- [x] Keep `POST /payments/webhook` public for Stripe signature verification
-
-### Reservation lifecycle
-- [x] Confirm reservation (HOLD → CONFIRMED)
+- [x] Validate time range
+- [x] Confirm reservation
 - [x] Cancel reservation
-- [x] Auto-expire holds (background job in NestJS)
+- [x] Auto-expire holds with background job
+- [x] Cache availability checks with Redis
+- [x] Invalidate availability cache after reservation changes
 
----
-
-## Next Features
-
-### Availability
-- [x] Check available lockers for a time range
-- [x] Filter by location
+### Admin UI
+- [x] Admin login page
+- [x] Protected dashboard routes
+- [x] Locker management UI
+- [x] Reservation management UI
+- [x] Availability lookup UI
+- [x] Payment button for active holds
+- [x] Payment success state
+- [x] Logout
+- [x] Token expiration handling
 
 ### Payments
-- [x] Integrate Stripe
-- [x] Handle payment webhooks
+- [x] Stripe integration
+- [x] Backend-controlled payment amount
+- [x] Stripe payment intent creation
+- [x] Stripe webhook handling
 - [x] Confirm reservation after payment
-- [x] Calculate payment amount on the backend
+- [x] Refresh reservations after payment confirmation
 
-## Deployment Readiness
-- [ ] Dockerize API
-- [ ] Dockerize web
-- [ ] Add production-ready docker-compose for local verification
-- [ ] Add health check endpoint
-- [ ] Configure production env variables
-- [ ] Configure CORS from env
-- [ ] Configure public Stripe webhook URL
-- [ ] Prepare AWS/EKS manifests later
+## Backend
 
----
+- [x] NestJS REST API
+- [x] Prisma ORM
+- [x] PostgreSQL persistence
+- [x] JWT admin authentication
+- [x] bcrypt-compatible password hashing
+- [x] Guarded locker routes
+- [x] Guarded reservation routes
+- [x] Guarded payment intent route
+- [x] Public Stripe webhook route
+- [x] Redis cache service
+- [x] Optional Redis fallback behavior
+
+## Cloud Deployment
+
+- [x] Dockerized API
+- [x] Dockerized Web app
+- [x] Pushed API image to AWS ECR
+- [x] Pushed Web image to AWS ECR
+- [x] Created Amazon RDS PostgreSQL database
+- [x] Applied Prisma migrations to RDS
+- [x] Created Amazon EKS cluster
+- [x] Deployed API to EKS
+- [x] Deployed Web app to EKS
+- [x] Deployed Redis to Kubernetes
+- [x] Configured Kubernetes Secrets
+- [x] Configured Kubernetes Services
+- [x] Configured public AWS Load Balancers
+- [x] Configured CORS for deployed frontend
 
 ## Environment Variables
 
-Required backend variables:
+### Backend
+- `DATABASE_URL`
 - `ADMIN_EMAIL`
 - `ADMIN_PASSWORD_HASH`
 - `JWT_SECRET`
-- `DATABASE_URL`
 - `STRIPE_SECRET_KEY`
 - `STRIPE_WEBHOOK_SECRET`
+- `CORS_ORIGIN`
+- `REDIS_URL`
 
-Required frontend variable:
+### Frontend
+- `NEXT_PUBLIC_API_BASE_URL`
 - `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`
 
-Security constraints:
-- Never commit `.env` values.
-- Keep `.env` files ignored by git.
-- Do not expose `STRIPE_SECRET_KEY` or `JWT_SECRET` to the frontend.
-- Do not let the frontend decide the payment amount.
+## Security Notes
 
----
+- Never commit `.env` files.
+- Never commit secrets or production credentials.
+- Keep `STRIPE_SECRET_KEY` and `JWT_SECRET` backend-only.
+- Frontend must never decide payment amounts.
+- Admin JWT storage currently uses MVP client-side storage.
+- Future improvement: replace client-side JWT storage with httpOnly cookies.
 
-## Nice to Have
-- [ ] Better UI styling
-- [ ] Sorting / filtering reservations
-- [ ] User accounts (future)
+## Remaining Work
 
+### Security
+- [ ] Replace localStorage JWT storage with httpOnly cookies
+- [ ] Add role-based access control
+- [ ] Add MFA for admin accounts
 
+### DevOps
+- [ ] Add HTTPS / TLS
+- [ ] Add custom domain
+- [ ] Add GitHub Actions CI/CD
+- [ ] Add production monitoring and alerts
+- [ ] Replace public API LoadBalancer with Ingress path routing
 
-* connect the main page to your pages (/lockers, /reservations, /availability)
-* improve status styling / dashboard polish
-* start thinking about payments / Stripe
-* or start documenting your architecture and features better
+### Product / UI
+- [ ] Improve dashboard styling
+- [ ] Add reservation sorting and filtering
+- [ ] Add dashboard statistics
+- [ ] Improve locker management UX
+- [ ] Add user-facing booking flow
+
+### Payments
+- [ ] Complete full production Stripe webhook setup
+- [ ] Test full payment flow with public deployed URL
+
+## Tech Stack
+
+- Next.js
+- NestJS
+- TypeScript
+- Prisma
+- PostgreSQL
+- Redis
+- Stripe
+- Docker
+- Kubernetes
+- Amazon EKS
+- Amazon RDS
+- AWS ECR

@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing'
 import { PrismaService } from '../prisma/prisma.service'
 import { LockersService } from './lockers.service'
+import { RedisCacheService } from '../cache/redis-cache.service'
 
 describe('LockersService', () => {
 	let service: LockersService
@@ -11,6 +12,10 @@ describe('LockersService', () => {
 				LockersService,
 				{
 					provide: PrismaService,
+					useValue: {},
+				},
+				{
+					provide: RedisCacheService,
 					useValue: {},
 				},
 			],

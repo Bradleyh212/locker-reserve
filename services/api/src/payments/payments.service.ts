@@ -3,15 +3,22 @@ import {
 	Injectable,
 	NotFoundException,
 } from '@nestjs/common'
-import Stripe from 'stripe'
 import { PrismaService } from '../prisma/prisma.service'
 import { ReservationStatus } from '@prisma/client'
+import { RedisCacheService } from '../cache/redis-cache.service'
+
+const LOCKERS_AVAILABILITY_CACHE_PATTERN = 'lockers:availability:*'
 
 @Injectable()
 export class PaymentsService {
 	private stripe: any
 
-	constructor(private prisma: PrismaService) {
+	constructor(
+		private prisma: PrismaService,
+		private cache: RedisCacheService,
+	) {
+		const Stripe = require('stripe')
+
 		this.stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
 			apiVersion: '2026-03-25.dahlia',
 		})
@@ -41,8 +48,7 @@ export class PaymentsService {
 		const start = new Date(reservation.startTime)
 		const end = new Date(reservation.endTime)
 
-		const durationHours =
-			(end.getTime() - start.getTime()) / (1000 * 60 * 60)
+		const durationHours = (end.getTime() - start.getTime()) / (1000 * 60 * 60)
 
 		const pricePerHour = 500
 		const amount = Math.max(1, Math.round(durationHours * pricePerHour))
@@ -128,6 +134,8 @@ export class PaymentsService {
 						status: ReservationStatus.CONFIRMED,
 					},
 				})
+
+				await this.cache.deleteByPattern(LOCKERS_AVAILABILITY_CACHE_PATTERN)
 			}
 		}
 
