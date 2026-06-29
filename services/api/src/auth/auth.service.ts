@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common'
 import { JwtService } from '@nestjs/jwt'
 import * as bcrypt from 'bcryptjs'
+import { AUTH_TOKEN_EXPIRES_IN } from './auth.constants'
 import { LoginDto } from './dto/login.dto'
 
 @Injectable()
@@ -41,7 +42,7 @@ export class AuthService {
 			},
 			{
 				secret: jwtSecret,
-				expiresIn: '8h',
+				expiresIn: AUTH_TOKEN_EXPIRES_IN,
 			},
 		)
 

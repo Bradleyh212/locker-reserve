@@ -1,40 +1,21 @@
 'use client'
 
 import type { ReactNode } from 'react'
-import { useEffect, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import {
-	ADMIN_TOKEN_CHANGED_EVENT,
-	clearAdminToken,
-	getAdminToken,
+	ADMIN_SESSION_CHANGED_EVENT,
+	fetchAdminSession,
+	logoutAdmin,
 } from '../lib/auth'
 
-const TOKEN_PENDING = '__locker_reserve_token_pending__'
 const navItems = [
 	{ href: '/', label: 'Dashboard' },
 	{ href: '/lockers', label: 'Lockers' },
 	{ href: '/reservations', label: 'Reservations' },
 	{ href: '/availability', label: 'Availability' },
 ]
-
-function subscribeToTokenChanges(onStoreChange: () => void) {
-	window.addEventListener('storage', onStoreChange)
-	window.addEventListener(ADMIN_TOKEN_CHANGED_EVENT, onStoreChange)
-
-	return () => {
-		window.removeEventListener('storage', onStoreChange)
-		window.removeEventListener(ADMIN_TOKEN_CHANGED_EVENT, onStoreChange)
-	}
-}
-
-function getTokenSnapshot() {
-	return getAdminToken()
-}
-
-function getServerTokenSnapshot() {
-	return TOKEN_PENDING
-}
 
 export default function RequireAdminAuth({
 	children,
@@ -43,24 +24,46 @@ export default function RequireAdminAuth({
 }) {
 	const router = useRouter()
 	const pathname = usePathname()
-	const token = useSyncExternalStore(
-		subscribeToTokenChanges,
-		getTokenSnapshot,
-		getServerTokenSnapshot,
-	)
+	const [checking, setChecking] = useState(true)
+	const [authenticated, setAuthenticated] = useState(false)
+
+	const checkSession = useCallback(async () => {
+		setChecking(true)
+
+		try {
+			const sessionIsValid = await fetchAdminSession()
+
+			if (!sessionIsValid) {
+				setAuthenticated(false)
+				router.replace('/login')
+				return
+			}
+
+			setAuthenticated(true)
+		} catch {
+			setAuthenticated(false)
+			router.replace('/login')
+		} finally {
+			setChecking(false)
+		}
+	}, [router])
 
 	useEffect(() => {
-		if (!token) {
-			router.replace('/login')
-		}
-	}, [router, token])
+		checkSession()
 
-	function signOut() {
-		clearAdminToken()
+		window.addEventListener(ADMIN_SESSION_CHANGED_EVENT, checkSession)
+
+		return () => {
+			window.removeEventListener(ADMIN_SESSION_CHANGED_EVENT, checkSession)
+		}
+	}, [checkSession])
+
+	async function signOut() {
+		await logoutAdmin()
 		router.replace('/login')
 	}
 
-	if (!token || token === TOKEN_PENDING) {
+	if (checking || !authenticated) {
 		return (
 			<main style={{ padding: 24, maxWidth: 720 }}>
 				<p>Checking session...</p>

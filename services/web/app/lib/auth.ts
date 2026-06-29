@@ -1,37 +1,46 @@
 const API_BASE_URL =
 	process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3001'
 
-const ADMIN_TOKEN_KEY = 'locker-reserve-admin-token'
-export const ADMIN_TOKEN_CHANGED_EVENT = 'locker-reserve-admin-token-changed'
+export const ADMIN_SESSION_CHANGED_EVENT = 'locker-reserve-admin-session-changed'
 
 export function apiUrl(path: string) {
 	return `${API_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`
 }
 
-export function getAdminToken() {
-	if (typeof window === 'undefined') {
-		return null
-	}
-
-	return window.localStorage.getItem(ADMIN_TOKEN_KEY)
-}
-
-export function setAdminToken(token: string) {
+function notifyAdminSessionChanged() {
 	if (typeof window === 'undefined') {
 		return
 	}
 
-	window.localStorage.setItem(ADMIN_TOKEN_KEY, token)
-	window.dispatchEvent(new Event(ADMIN_TOKEN_CHANGED_EVENT))
+	window.dispatchEvent(new Event(ADMIN_SESSION_CHANGED_EVENT))
 }
 
-export function clearAdminToken() {
-	if (typeof window === 'undefined') {
-		return
+export async function fetchAdminSession() {
+	const response = await fetch(apiUrl('/auth/me'), {
+		credentials: 'include',
+		cache: 'no-store',
+	})
+
+	if (response.status === 401) {
+		return false
 	}
 
-	window.localStorage.removeItem(ADMIN_TOKEN_KEY)
-	window.dispatchEvent(new Event(ADMIN_TOKEN_CHANGED_EVENT))
+	if (!response.ok) {
+		throw new Error(`Session check failed (${response.status})`)
+	}
+
+	return true
+}
+
+export async function logoutAdmin() {
+	try {
+		await fetch(apiUrl('/auth/logout'), {
+			method: 'POST',
+			credentials: 'include',
+		})
+	} finally {
+		notifyAdminSessionChanged()
+	}
 }
 
 export function redirectToLogin() {
@@ -39,7 +48,7 @@ export function redirectToLogin() {
 		return
 	}
 
-	clearAdminToken()
+	notifyAdminSessionChanged()
 	window.location.assign('/login')
 }
 
@@ -48,15 +57,11 @@ export async function authFetch(
 	init: RequestInit = {},
 ) {
 	const headers = new Headers(init.headers)
-	const token = getAdminToken()
-
-	if (token) {
-		headers.set('Authorization', `Bearer ${token}`)
-	}
 
 	const response = await fetch(input, {
 		...init,
 		headers,
+		credentials: init.credentials ?? 'include',
 	})
 
 	if (response.status === 401) {

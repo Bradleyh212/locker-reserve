@@ -6,17 +6,23 @@ import {
 	UnauthorizedException,
 } from '@nestjs/common'
 import { JwtService } from '@nestjs/jwt'
+import type { Request } from 'express'
+import { AUTH_COOKIE_NAME } from '../auth.constants'
+
+type AdminRequest = Request & {
+	admin?: unknown
+}
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
 	constructor(private readonly jwtService: JwtService) {}
 
 	async canActivate(context: ExecutionContext): Promise<boolean> {
-		const request = context.switchToHttp().getRequest()
-		const token = this.extractToken(request.headers.authorization)
+		const request = context.switchToHttp().getRequest<AdminRequest>()
+		const token = this.extractToken(request.headers.cookie)
 
 		if (!token) {
-			throw new UnauthorizedException('Missing bearer token')
+			throw new UnauthorizedException('Missing authentication cookie')
 		}
 
 		const jwtSecret = process.env.JWT_SECRET
@@ -36,9 +42,21 @@ export class JwtAuthGuard implements CanActivate {
 		return true
 	}
 
-	private extractToken(authorization?: string): string | undefined {
-		const [type, token] = authorization?.split(' ') ?? []
+	private extractToken(cookieHeader?: string): string | undefined {
+		const cookies = cookieHeader?.split(';') ?? []
 
-		return type === 'Bearer' ? token : undefined
+		for (const cookie of cookies) {
+			const [rawName, ...valueParts] = cookie.split('=')
+
+			if (rawName?.trim() !== AUTH_COOKIE_NAME) {
+				continue
+			}
+
+			const value = valueParts.join('=')
+
+			return value ? decodeURIComponent(value) : undefined
+		}
+
+		return undefined
 	}
 }

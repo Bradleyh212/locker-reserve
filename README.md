@@ -32,7 +32,7 @@ Built with Next.js, NestJS, and PostgreSQL.
 - Admin login with email and password at `/login`
 - JWT-protected admin API routes for lockers, reservations, and PaymentIntent creation
 - Protected admin pages: `/`, `/lockers`, `/reservations`, `/availability`
-- Admin JWT stored in `localStorage` for the current MVP
+- Admin JWT is stored in a secure `httpOnly` cookie
 - Stripe webhook remains public and verifies Stripe signatures
 
 ----------------------------------------------------------------------------
@@ -84,18 +84,33 @@ STRIPE_SECRET_KEY=
 STRIPE_WEBHOOK_SECRET=
 ```
 
+Optional backend variables:
+
+```bash
+PORT=3001
+CORS_ORIGIN=http://localhost:3000
+REDIS_URL=redis://localhost:6379
+```
+
 Required frontend variable:
 
 ```bash
 NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=
 ```
 
+Optional frontend variable:
+
+```bash
+NEXT_PUBLIC_API_BASE_URL=http://localhost:3001
+```
+
 Only `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` should be exposed to the frontend.
 Do not expose `STRIPE_SECRET_KEY` or `JWT_SECRET` in Next.js public env vars.
 Never commit `.env` values; `.env` files are ignored by git.
 
-For the current MVP, the admin JWT is stored in `localStorage`. This is simple
-for local development and can later be replaced with httpOnly cookies.
+Admin authentication uses a JWT set by the API as an `httpOnly` cookie. The
+frontend does not read or store the JWT; browser requests include the cookie
+with `credentials: 'include'`.
 
 Payment amounts are calculated by the backend. The frontend only sends the
 reservation ID when creating a Stripe PaymentIntent.
@@ -108,5 +123,14 @@ reservation ID when creating a Stripe PaymentIntent.
 From the project root:
 
 ```bash
-./scripts/run-dev.sh
+./scripts/start-local.sh
 ```
+
+This starts the local PostgreSQL and Redis Docker services, installs
+dependencies, applies Prisma migrations, and starts:
+
+- API: `http://localhost:3001`
+- Web: `http://localhost:3000`
+
+After logging in at `/login`, the browser should receive an `httpOnly`
+`locker_reserve_admin` cookie. No JWT should appear in `localStorage`.

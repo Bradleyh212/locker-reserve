@@ -3,7 +3,7 @@
 import type { FormEvent } from 'react'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { apiUrl, getAdminToken, setAdminToken } from '../lib/auth'
+import { apiUrl, fetchAdminSession } from '../lib/auth'
 
 export default function LoginPage() {
 	const router = useRouter()
@@ -13,8 +13,24 @@ export default function LoginPage() {
 	const [loading, setLoading] = useState(false)
 
 	useEffect(() => {
-		if (getAdminToken()) {
-			router.replace('/')
+		let active = true
+
+		async function redirectIfAuthenticated() {
+			try {
+				const authenticated = await fetchAdminSession()
+
+				if (active && authenticated) {
+					router.replace('/')
+				}
+			} catch {
+				// Stay on the login page when the session check cannot complete.
+			}
+		}
+
+		redirectIfAuthenticated()
+
+		return () => {
+			active = false
 		}
 	}, [router])
 
@@ -27,12 +43,13 @@ export default function LoginPage() {
 			const res = await fetch(apiUrl('/auth/login'), {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
+				credentials: 'include',
 				body: JSON.stringify({ email, password }),
 			})
 
 			const data = await res.json().catch(() => null)
 
-			if (!res.ok || !data?.accessToken) {
+			if (!res.ok || !data?.authenticated) {
 				setError(
 					data?.message ??
 						(res.status === 401
@@ -42,7 +59,6 @@ export default function LoginPage() {
 				return
 			}
 
-			setAdminToken(data.accessToken)
 			router.replace('/')
 		} catch (error: unknown) {
 			setError(error instanceof Error ? error.message : 'Network error')

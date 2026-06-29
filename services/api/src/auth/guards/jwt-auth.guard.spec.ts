@@ -4,22 +4,23 @@ import {
 	UnauthorizedException,
 } from '@nestjs/common'
 import { JwtService } from '@nestjs/jwt'
+import { AUTH_COOKIE_NAME } from '../auth.constants'
 import { JwtAuthGuard } from './jwt-auth.guard'
 
 type TestRequest = {
 	headers: {
-		authorization?: string
+		cookie?: string
 	}
 	admin?: unknown
 }
 
-function createContext(authorization?: string) {
+function createContext(cookie?: string) {
 	const request: TestRequest = {
 		headers: {},
 	}
 
-	if (authorization) {
-		request.headers.authorization = authorization
+	if (cookie) {
+		request.headers.cookie = cookie
 	}
 
 	const context = {
@@ -52,7 +53,7 @@ describe('JwtAuthGuard', () => {
 		process.env.JWT_SECRET = originalJwtSecret
 	})
 
-	it('returns 401 when the bearer token is missing', async () => {
+	it('returns 401 when the authentication cookie is missing', async () => {
 		delete process.env.JWT_SECRET
 		const guard = new JwtAuthGuard(new JwtService())
 		const { context } = createContext()
@@ -62,10 +63,10 @@ describe('JwtAuthGuard', () => {
 		)
 	})
 
-	it('returns 401 when the bearer token is invalid', async () => {
+	it('returns 401 when the authentication cookie is invalid', async () => {
 		process.env.JWT_SECRET = 'test-jwt-secret'
 		const guard = new JwtAuthGuard(new JwtService())
-		const { context } = createContext('Bearer invalid-token')
+		const { context } = createContext(`${AUTH_COOKIE_NAME}=invalid-token`)
 
 		await expect(guard.canActivate(context)).rejects.toBeInstanceOf(
 			UnauthorizedException,
@@ -75,14 +76,14 @@ describe('JwtAuthGuard', () => {
 	it('rejects configured requests when the JWT secret is missing', async () => {
 		delete process.env.JWT_SECRET
 		const guard = new JwtAuthGuard(new JwtService())
-		const { context } = createContext('Bearer token')
+		const { context } = createContext(`${AUTH_COOKIE_NAME}=token`)
 
 		await expect(guard.canActivate(context)).rejects.toBeInstanceOf(
 			InternalServerErrorException,
 		)
 	})
 
-	it('attaches the decoded admin claims when the bearer token is valid', async () => {
+	it('attaches the decoded admin claims when the authentication cookie is valid', async () => {
 		process.env.JWT_SECRET = 'test-jwt-secret'
 		const jwtService = new JwtService()
 		const guard = new JwtAuthGuard(jwtService)
@@ -95,7 +96,9 @@ describe('JwtAuthGuard', () => {
 				secret: process.env.JWT_SECRET,
 			},
 		)
-		const { context, request } = createContext(`Bearer ${token}`)
+		const { context, request } = createContext(
+			`theme=dark; ${AUTH_COOKIE_NAME}=${encodeURIComponent(token)}`,
+		)
 
 		await expect(guard.canActivate(context)).resolves.toBe(true)
 		expect(request.admin).toMatchObject({
