@@ -67,10 +67,10 @@ type MetricIconName =
 	| 'cancelled'
 
 const statusColors: Record<string, string> = {
-	CONFIRMED: '#1f6fff',
-	HOLD: '#ff8a1f',
-	EXPIRED: '#8b5cf6',
-	CANCELLED: '#ef4444',
+	CONFIRMED: 'var(--chart-blue)',
+	HOLD: 'var(--chart-orange)',
+	EXPIRED: 'var(--chart-violet)',
+	CANCELLED: 'var(--chart-red)',
 }
 
 export default function HomePage() {
@@ -125,8 +125,8 @@ function Dashboard() {
 					value: stats.totalLockers,
 					note: `${stats.inactiveLockers} inactive`,
 					icon: 'lockers',
-					color: '#5b2cf0',
-					soft: '#efeaff',
+					color: 'var(--metric-purple)',
+					soft: 'var(--metric-purple-soft)',
 					data: smoothData(stats.totalLockers, reservationTrend),
 				},
 				{
@@ -139,8 +139,8 @@ function Dashboard() {
 								)}% of total`
 							: 'No lockers yet',
 					icon: 'activeLockers',
-					color: '#20b66d',
-					soft: '#e8f8ef',
+					color: 'var(--metric-green)',
+					soft: 'var(--metric-green-soft)',
 					toneClass: 'metric-positive',
 					data: smoothData(stats.activeLockers, reservationTrend),
 				},
@@ -149,8 +149,8 @@ function Dashboard() {
 					value: stats.activeReservations,
 					note: 'Holds and confirmed',
 					icon: 'reservations',
-					color: '#1f6fff',
-					soft: '#e8f1ff',
+					color: 'var(--metric-blue)',
+					soft: 'var(--metric-blue-soft)',
 					toneClass: 'metric-positive',
 					data: reservationTrend,
 				},
@@ -159,8 +159,8 @@ function Dashboard() {
 					value: stats.pendingHolds,
 					note: 'Expiring soon',
 					icon: 'holds',
-					color: '#ff8a1f',
-					soft: '#fff1e3',
+					color: 'var(--metric-orange)',
+					soft: 'var(--metric-orange-soft)',
 					toneClass: 'metric-warning',
 					data: smoothData(stats.pendingHolds, reservationTrend),
 				},
@@ -169,8 +169,8 @@ function Dashboard() {
 					value: stats.confirmedReservations,
 					note: 'Paid or manually confirmed',
 					icon: 'confirmed',
-					color: '#1f6fff',
-					soft: '#e8f1ff',
+					color: 'var(--metric-blue)',
+					soft: 'var(--metric-blue-soft)',
 					toneClass: 'metric-positive',
 					data: smoothData(stats.confirmedReservations, reservationTrend),
 				},
@@ -179,8 +179,8 @@ function Dashboard() {
 					value: stats.cancelledReservations,
 					note: `${stats.expiredReservations} expired`,
 					icon: 'cancelled',
-					color: '#ef4444',
-					soft: '#ffe9e9',
+					color: 'var(--metric-red)',
+					soft: 'var(--metric-red-soft)',
 					toneClass: 'metric-negative',
 					data: smoothData(stats.cancelledReservations, reservationTrend),
 				},
@@ -219,7 +219,10 @@ function Dashboard() {
 								<h2 className="section-title">Reservations Over Time</h2>
 								<span className="badge badge-info">Last 30 days</span>
 							</div>
-							<LineChart data={stats.dailyReservations} color="#5b2cf0" />
+							<LineChart
+								data={stats.dailyReservations}
+								color="var(--chart-purple)"
+							/>
 						</article>
 
 						<article className="card chart-card">
@@ -368,7 +371,7 @@ function LineChart({
 						x2={width - padding / 2}
 						y1={y}
 						y2={y}
-						stroke="#e9edf5"
+						stroke="var(--chart-grid)"
 						strokeWidth="1"
 					/>
 				)
@@ -393,7 +396,7 @@ function LineChart({
 						cx={x}
 						cy={y}
 						r="4"
-						fill="#fff"
+						fill="var(--chart-center)"
 						stroke={color}
 						strokeWidth="3"
 					/>
@@ -412,7 +415,7 @@ function LineChart({
 						key={point.date}
 						x={x}
 						y={height - 8}
-						fill="#60708a"
+						fill="var(--chart-label)"
 						fontSize="12"
 						textAnchor={index === 0 ? 'start' : 'middle'}
 					>
@@ -463,7 +466,7 @@ function DonutChart({ data }: { data: StatusBreakdown[] }) {
 				segments: [
 					...acc.segments,
 					{
-						color: statusColors[item.status] ?? '#60708a',
+						color: statusColors[item.status] ?? 'var(--chart-label)',
 						path,
 						status: item.status,
 					},
@@ -480,10 +483,15 @@ function DonutChart({ data }: { data: StatusBreakdown[] }) {
 				<circle
 					cx={center}
 					cy={center}
-					fill="#eef2f7"
+					fill="var(--chart-ring)"
 					r={outerRadius}
 				/>
-				<circle cx={center} cy={center} fill="#fff" r={innerRadius} />
+				<circle
+					cx={center}
+					cy={center}
+					fill="var(--chart-center)"
+					r={innerRadius}
+				/>
 				{donutSegments.map((segment) => {
 					return (
 						<path
@@ -496,7 +504,7 @@ function DonutChart({ data }: { data: StatusBreakdown[] }) {
 				<text
 					x="110"
 					y="106"
-					fill="#07122b"
+					fill="var(--chart-title)"
 					fontSize="28"
 					fontWeight="900"
 					textAnchor="middle"
@@ -506,7 +514,7 @@ function DonutChart({ data }: { data: StatusBreakdown[] }) {
 				<text
 					x="110"
 					y="130"
-					fill="#60708a"
+					fill="var(--chart-label)"
 					fontSize="14"
 					textAnchor="middle"
 				>
@@ -522,7 +530,8 @@ function DonutChart({ data }: { data: StatusBreakdown[] }) {
 							<span
 								className="legend-dot"
 								style={{
-									background: statusColors[item.status] ?? '#60708a',
+									background:
+										statusColors[item.status] ?? 'var(--chart-label)',
 								}}
 							/>
 							<span>{getStatusLabel(item.status)}</span>

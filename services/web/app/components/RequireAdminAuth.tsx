@@ -9,6 +9,7 @@ import {
 	fetchAdminSession,
 	logoutAdmin,
 } from '../lib/auth'
+import ThemeSelector from './ThemeSelector'
 
 const navItems = [
 	{ href: '/', label: 'Dashboard', Icon: DashboardIcon },
@@ -121,10 +122,13 @@ export default function RequireAdminAuth({
 			</aside>
 			<div className="admin-main">
 				<header className="topbar">
-					<span className="avatar">A</span>
-					<div>
-						<p className="admin-name">Admin</p>
-						<p className="admin-role">Administrator</p>
+					<ThemeSelector />
+					<div className="topbar-user">
+						<span className="avatar">A</span>
+						<div>
+							<p className="admin-name">Admin</p>
+							<p className="admin-role">Administrator</p>
+						</div>
 					</div>
 				</header>
 				{children}
