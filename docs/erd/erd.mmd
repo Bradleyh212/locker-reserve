@@ -1,4 +1,5 @@
 erDiagram
+		%% Current Prisma models only; proposed device entities are documented separately.
 	LOCKER ||--o{ RESERVATION : has
 
 	LOCKER {
@@ -20,3 +21,9 @@ erDiagram
 		datetime createdAt
 		datetime updatedAt
 	}
+
+        PAYMENT_EVENT {
+            uuid id PK
+            string stripeEventId UK
+            datetime createdAt
+        }

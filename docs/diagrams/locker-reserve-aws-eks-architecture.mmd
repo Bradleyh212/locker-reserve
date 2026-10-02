@@ -1,5 +1,5 @@
 flowchart LR
-	%% Locker Reserve - AWS/EKS Target Architecture
+	%% LEGACY: previous AWS/EKS target, not a verified live deployment. See ../deployment.md.
 
 	U["Admin/User Browser"] -->|HTTPS| ALB["AWS Application Load Balancer"]
 	M["Mobile App (later)"] -->|HTTPS| ALB
@@ -7,7 +7,7 @@ flowchart LR
 	ALB --> WEB_SVC["Kubernetes Service: web"]
 	ALB --> API_SVC["Kubernetes Service: api"]
 
-	subgraph AWS["AWS ca-central-1"]
+	subgraph AWS["LEGACY AWS target: ca-central-1"]
 		subgraph EKS["Amazon EKS Cluster"]
 			WEB_SVC --> WEB_PODS["Next.js Web Pods"]
 			API_SVC --> API_PODS["NestJS API Pods"]

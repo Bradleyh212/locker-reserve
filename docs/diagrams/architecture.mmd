@@ -1,12 +1,19 @@
 flowchart LR
-	M["Mobile App (later)"] -->|HTTPS| API["NestJS API"]
-	W["Next.js Web (Admin-Demo)"] -->|HTTPS| API
-
-	API --> PG[("PostgreSQL")]
-	API --> R[("Redis")]
-	API --> S["Stripe"]
-
-	S -->|Webhooks| API
-
-	WORKER["Worker (Jobs)"] --> PG
-	WORKER --> R
+    %% Target architecture; embedded components and cloud hosting are planned.
+    B["Browser: public booking and admin"] -->|HTTPS| P["HTTPS reverse proxy - planned"]
+    subgraph CLOUD["Cloud Docker host - planned deployment"]
+        P --> W["Next.js web"]
+        P -->|"API route; strip /api if used"| A["NestJS API + hold expiration scheduler"]
+        A --> R[("Optional Redis cache")]
+    end
+    A --> DB[("PostgreSQL - hosting choice pending")]
+    A -->|"PaymentIntent"| S["Stripe"]
+    S -->|"Signed webhook via HTTPS"| P
+    subgraph LOCKER["Physical locker - planned"]
+        E["ESP32 C++ firmware"] --> D["Compatible lock driver"]
+        D --> L["12V solenoid lock"]
+        PS["12V supply + board power regulation"] --> D
+        PS --> E
+        RS["Optional reed / door sensor"] --> E
+    end
+    E -->|"Outbound HTTPS: poll, acknowledge, heartbeat"| P
