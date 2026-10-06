@@ -1,150 +1,59 @@
-# Locker Reservation System
+# Locker Reserve requirements
 
-A cloud-deployed locker reservation system with an admin dashboard, reservation holds, Stripe payment flow, PostgreSQL persistence, Redis caching, and AWS/EKS deployment.
+Status: current software baseline plus planned embedded integration, reviewed 2026-10-02.
 
-## Architecture
+## Direction
 
-- Next.js Admin Dashboard
-- NestJS REST API
-- PostgreSQL on Amazon RDS
-- Redis cache
-- Docker containers
-- AWS ECR image registry
-- Amazon EKS Kubernetes cluster
-- Kubernetes Secrets, Deployments, and Services
-- AWS Load Balancers
-- Stripe payments and webhooks
+Customers find, reserve and pay for storage lockers. The next milestone is authorized physical access using ESP32 C++ firmware, a 12V solenoid lock and an optional reed/door sensor. Cloud software remains Next.js, NestJS, Prisma/PostgreSQL and optional Redis. Docker hosting replaces AWS/EKS as the target; the provider and database hosting choice remain open.
 
-## Core Features
+## Implemented baseline
 
-### Lockers
-- [x] Create locker
-- [x] List lockers
-- [x] Activate / deactivate locker
-- [x] Cache locker list with Redis
-- [x] Invalidate locker cache after updates
+- Locker creation/listing, activation and deactivation; availability by location and time.
+- Ten-minute holds, confirmation, cancellation and scheduled expiration inside the API.
+- Overlap lookup before creating a hold; inactive lockers rejected.
+- Public booking at `/book`, PaymentIntent creation and Stripe Elements payment UI.
+- Backend-calculated payment amounts and signature-verified Stripe webhooks.
+- Admin login and guarded routes using an httpOnly JWT cookie; Secure is enabled when NODE_ENV is production.
+- Dashboard, filtering/sorting and optional Redis caching with invalidation.
+- Dockerfiles and local startup via `./scripts/start-local.sh`.
 
-### Reservations
-- [x] Create temporary hold
-- [x] Hold expiration after 10 minutes
-- [x] Prevent overlapping reservations
-- [x] Prevent booking inactive lockers
-- [x] Validate time range
-- [x] Confirm reservation
-- [x] Cancel reservation
-- [x] Auto-expire holds with background job
-- [x] Cache availability checks with Redis
-- [x] Invalidate availability cache after reservation changes
+These are implementation observations, not a claim that production acceptance tests have passed. Current behavior is shown in the [reservation sequence](diagrams/reservation-sequence.mmd).
 
-### Admin UI
-- [x] Admin login page
-- [x] Protected dashboard routes
-- [x] Locker management UI
-- [x] Reservation management UI
-- [x] Availability lookup UI
-- [x] Payment button for active holds
-- [x] Payment success state
-- [x] Logout
-- [x] Token expiration handling
+## Existing correctness gaps
 
-### Payments
-- [x] Stripe integration
-- [x] Backend-controlled payment amount
-- [x] Stripe payment intent creation
-- [x] Stripe webhook handling
-- [x] Confirm reservation after payment
-- [x] Refresh reservations after payment confirmation
+- Overlap checking and insertion are separate operations. There is no database exclusion constraint or enclosing transaction protecting concurrent holds.
+- Webhook event recording and reservation confirmation are separate writes; do not claim atomic/exactly-once payment processing. The webhook confirms a HOLD without checking its expiresAt.
+- Admin confirmation checks hold expiry but does not verify payment. Define whether such reservations authorize access before adding hardware.
+- Public reservations have no customer owner/access credential. A reservation UUID is not proof of entitlement.
+- Redis is a cache, not the source of truth for holds or commands.
 
-## Backend
+These gaps need implementation and tests before unattended physical access.
 
-- [x] NestJS REST API
-- [x] Prisma ORM
-- [x] PostgreSQL persistence
-- [x] JWT admin authentication
-- [x] bcrypt-compatible password hashing
-- [x] Guarded locker routes
-- [x] Guarded reservation routes
-- [x] Guarded payment intent route
-- [x] Public Stripe webhook route
-- [x] Redis cache service
-- [x] Optional Redis fallback behavior
+## Planned requirements
 
-## Cloud Deployment
+| Area | Acceptance requirement |
+| --- | --- |
+| Hosting | Deploy web/API with Docker, HTTPS, persistent database, tested backups, documented updates and rollback. |
+| Firmware | Separate `firmware/` project; C++ domain logic testable with fake hardware before components arrive. |
+| Device identity | Unique revocable credential per device, with server-controlled locker mapping. |
+| Access | Verify customer entitlement, allowed reservation state, active time window and locker availability before issuing a command. |
+| Commands | Persist IDs, target, validity window and outcome; reject expired/wrong-target commands and prevent automatic duplicate activation. |
+| Lock output | Boot inactive; enforce a locally bounded activation duration based on the selected lock/driver. |
+| Connectivity | Provision Wi-Fi; reconnect with bounded backoff; validate HTTPS certificates; deny new remote unlocks while offline. |
+| Sensor | Optional open/closed input with debounce; report unknown when unavailable. Door position does not prove latch engagement. |
+| Recovery | Record uncertain execution, avoid replay after reboot, and document authorized physical recovery. |
+| Operations | Heartbeats, firmware version, credential rotation, installation checks and observable failures. |
 
-- [x] Dockerized API
-- [x] Dockerized Web app
-- [x] Pushed API image to AWS ECR
-- [x] Pushed Web image to AWS ECR
-- [x] Created Amazon RDS PostgreSQL database
-- [x] Applied Prisma migrations to RDS
-- [x] Created Amazon EKS cluster
-- [x] Deployed API to EKS
-- [x] Deployed Web app to EKS
-- [x] Deployed Redis to Kubernetes
-- [x] Configured Kubernetes Secrets
-- [x] Configured Kubernetes Services
-- [x] Configured public AWS Load Balancers
-- [x] Configured CORS for deployed frontend
+Reservation status, command outcome, actuator output and door position must remain separate concepts.
 
-## Environment Variables
+## Remaining decisions
 
-### Backend
-- `DATABASE_URL`
-- `ADMIN_EMAIL`
-- `ADMIN_PASSWORD_HASH`
-- `JWT_SECRET`
-- `STRIPE_SECRET_KEY`
-- `STRIPE_WEBHOOK_SECRET`
-- `CORS_ORIGIN`
-- `REDIS_URL`
+Exact ESP32 board, solenoid/driver ratings, power supply and sensor; one controller per locker versus multiple lockers; firmware framework and pinned versions; hosting provider; customer access credential and delivery method; timing/rate limits and recovery policy. Proposals are tracked in [ADRs](README.md#models-and-decisions).
 
-### Frontend
-- `NEXT_PUBLIC_API_BASE_URL`
-- `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`
+## Configuration and security
 
-## Security Notes
+Current application environment variables are documented in the [root README](../README.md) and [deployment guide](deployment.md). Keep backend secrets and device credentials out of browser bundles, source control and logs. No firmware variables or device routes exist yet. Planned API examples are in the [device contract](embedded/device-api.md).
 
-- Never commit `.env` files.
-- Never commit secrets or production credentials.
-- Keep `STRIPE_SECRET_KEY` and `JWT_SECRET` backend-only.
-- Frontend must never decide payment amounts.
-- Admin JWT storage currently uses MVP client-side storage.
-- Future improvement: replace client-side JWT storage with httpOnly cookies.
+## Historical work
 
-## Remaining Work
-
-### Security
-- [x] Replace localStorage JWT storage with httpOnly cookies for production hardening
-
-### Product / UI
-- [x] Improve dashboard styling
-- [x] Add reservation sorting and filtering
-- [x] Add dashboard statistics
-- [x] Improve locker management UX
-- [x] Add user-facing booking flow
-
-### DevOps
-- [ ] Add HTTPS / TLS
-- [ ] Add custom domain
-- [ ] Add GitHub Actions CI/CD
-- [ ] Add production monitoring and alerts
-- [ ] Replace public API LoadBalancer with Ingress path routing
-
-### Payments
-- [ ] Complete full production Stripe webhook setup
-- [ ] Test full payment flow with public deployed URL
-
-## Tech Stack
-
-- Next.js
-- NestJS
-- TypeScript
-- Prisma
-- PostgreSQL
-- Redis
-- Stripe
-- Docker
-- Kubernetes
-- Amazon EKS
-- Amazon RDS
-- AWS ECR
+The previous docs recorded ECR image publishing, RDS migrations and EKS deployment. Keep that history in the [legacy guide](legacy/aws-eks-deployment.md); Kubernetes/Ingress work is no longer a primary milestone.

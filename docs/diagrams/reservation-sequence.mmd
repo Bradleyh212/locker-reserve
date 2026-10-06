@@ -1,20 +1,29 @@
 sequenceDiagram
-	participant U as User (Mobile/Web)
-	participant API as NestJS API
-	participant R as Redis
-	participant PG as Postgres
-	participant S as Stripe
-	participant W as Worker
-
-	U->>API: Create Hold (lockerId, timeWindow)
-	API->>PG: Tx: create reservation HOLD (unique constraint)
-	API->>R: Set hold TTL (10 min)
-	API-->>U: holdId + expiresAt + checkoutUrl
-
-	U->>S: Checkout
-	S-->>API: webhook payment_succeeded (idempotent)
-	API->>PG: Tx: mark reservation CONFIRMED
-	API-->>U: confirmation + QR payload
-
-	W->>R: Poll / scheduled job
-	W->>PG: Expire stale HOLD reservations
+    participant U as Browser
+    participant A as NestJS API
+    participant P as PostgreSQL
+    participant R as Optional Redis cache
+    participant S as Stripe
+    Note over U,S: Current implementation; no physical unlock or QR credential
+    U->>A: POST /public/reservations/hold
+    A->>P: Check active locker and overlapping reservations
+    Note over A,P: Check and insert are separate; no overlap exclusion constraint
+    A->>P: Create HOLD with expiresAt (10 minutes)
+    A->>R: Invalidate availability cache
+    A-->>U: Reservation with locker and expiresAt
+    U->>A: POST /public/payments/create-intent (reservationId)
+    A->>P: Validate HOLD and expiration
+    A->>S: Create PaymentIntent with server-calculated amount
+    A-->>U: PaymentIntent including client_secret
+    U->>S: Confirm payment with Stripe Elements
+    S->>A: POST /payments/webhook: payment_intent.succeeded
+    A->>A: Verify signature against raw body
+    A->>P: Check and record PaymentEvent
+    Note over A,P: Event recording and confirmation are not one transaction
+    A->>P: If status is HOLD, mark CONFIRMED
+    Note over A,P: Webhook currently does not check hold expiresAt
+    A->>R: Invalidate availability cache
+    A-->>S: received
+    Note over U,A: No server push or QR payload is returned to browser
+    A->>P: Scheduled job expires stale HOLD rows every minute
+    A->>R: Invalidate availability cache when rows changed

@@ -1,0 +1,31 @@
+sequenceDiagram
+    participant U as Authorized customer
+    participant A as API
+    participant P as PostgreSQL
+    participant E as ESP32
+    participant L as Lock driver
+    Note over U,L: Proposed only; no device endpoints or firmware implemented
+    U->>A: Request unlock with customer access credential
+    A->>P: Verify entitlement, time window, locker and mapping
+    alt Access denied
+        A-->>U: Reject request
+    else Access allowed
+        A->>P: Persist expiring command ID
+        A-->>U: 202 command ID (pending)
+        E->>A: Poll using device credential
+        A->>P: Revalidate queued command eligibility
+        A-->>E: Command or 204 if none valid
+        E->>E: Validate target, time, duration and durable journal
+        alt Expired, invalid or duplicate
+            E->>A: Rejection or previously saved result; no pulse
+        else New valid command
+            E->>E: Persist consumption before actuation
+            E->>L: Bounded output pulse
+            E->>L: Output inactive at local deadline
+            E->>E: Persist output result and optional door observation
+            E->>A: Idempotent terminal result
+            A->>P: Record result (not proof of latch state)
+        end
+    end
+    Note over A,E: Lost acknowledgements reuse ID; never automatically repeat pulse
+    Note over E,L: Reboot with incomplete execution means UNKNOWN; no replay

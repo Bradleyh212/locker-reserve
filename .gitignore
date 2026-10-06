@@ -141,9 +141,5 @@ vite.config.ts.timestamp-*
 #.DS_Stroe
 .DS_Store
 
-#Environement
-.env
-.env.*
-
 # Swp
 *.swp
