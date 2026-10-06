@@ -11,13 +11,14 @@ Status: planned tests, not executed results. Use fake hardware first, then the s
 | Duplicate delivery or lost result acknowledgement | Same ID does not trigger another pulse; result can be resent. |
 | Expired command after reconnection | Reject; no delayed automatic unlock. |
 | Reboot before/during/after pulse | Output inactive on boot; consumed commands not replayed; incomplete result is UNKNOWN. |
-| Network loss during activation | Local deadline still disables output; report outcome after reconnect. |
+| Network/Wi-Fi interruption; ESP32 remains electrically powered but cannot reach API | No new remote unlocks or invented lock/unlock success while offline; local activation deadline still applies. Verify reconnection, rejection of expired queued commands, last-seen aging/offline indication during outage, and liveness recovery after authenticated contact. |
 | Invalid TLS trust, hostname or unavailable reliable time | No command execution through an insecure/time-unchecked fallback. |
 | Excessive pulse, malformed payload, unknown protocol | Reject without activation. |
 | Concurrent customer requests | One in-flight command per actuator; no pulse extension. |
 | Sensor absent/bouncing/disconnected | Unknown or debounced position according to validated circuit; no invented lock state. |
 | Cancellation after delivery | Measure/document the short command-validity race; no claim of instantaneous recall. |
-| Power interruption, supply sag and repeated use | Document observed mechanical state and limits; no unintended boot pulse. |
+| Electrical power loss / supply interruption | Test ESP32 power loss and solenoid-supply loss separately; record actual mechanical state, report uncertainty after restart, and verify no unintended boot pulse. |
+| Supply sag and repeated activation | Verify measured supply and thermal limits; no unintended activation or reset-induced pulse. |
 
 For each run record firmware/API versions, hardware revisions, test input, expected/observed result, command IDs, timestamps and pass/fail. Keep secrets out of captures. Use a meter/appropriate instrumentation to verify output duration, supply and boot behavior; software logs alone do not validate wiring.
 
