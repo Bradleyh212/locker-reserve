@@ -4,7 +4,7 @@ This standalone Arduino sketch checks compilation, USB upload and serial output.
 It does not run the locker controller, access Wi-Fi or configure actuator GPIO.
 Keep all external wiring disconnected for this test.
 
-Verified by the user on 2026-10-05: compilation, upload with flash hash verification,
+Verified by Bradley on 2026-10-05: compilation, upload with flash hash verification,
 and repeating serial uptime output (including 60000 ms). The upload identified
 ESP32-D0WD-V3 revision v3.1 on the ELEGOO board. Configuration: `ESP32 Dev Module`,
 `esp32` by Espressif Systems 3.3.12, observed port `/dev/cu.usbserial-0001`
