@@ -6,7 +6,8 @@ Reviewed against the repository on 2026-10-02. This update changes documentation
 
 - **Implemented:** reservation/admin/public booking software, Stripe PaymentIntents and webhooks, PostgreSQL, optional Redis cache, Dockerfiles and local startup.
 - **Target:** simpler cloud-hosted Docker deployment plus ESP32 C++ firmware controlling a 12V solenoid, with an optional door sensor.
-- **Not implemented:** firmware, device authentication/endpoints, access credentials, command persistence, or a validated cloud Compose deployment.
+- **Initial scaffold:** [host C++ actuator tests/simulator and user-tested USB/reed Arduino bench sketches](../firmware/README.md).
+- **Not implemented:** integrated ESP32 actuator firmware, device authentication/endpoints, access credentials, command persistence, or a validated cloud Compose deployment.
 - **Legacy:** AWS/EKS deployment instructions and manifests. Historical deployment claims are not verification of currently running resources.
 
 1. [Requirements and gaps](requirements.md)

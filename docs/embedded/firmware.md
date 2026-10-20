@@ -1,6 +1,6 @@
 # ESP32 firmware development plan
 
-Status: planned. There is no `firmware/` directory or flashable image yet. C++ runs on the ESP32; web/API code remains in `services/web` and `services/api`.
+Status: initial scaffold exists in [`firmware/`](../../firmware/README.md), with C++ actuator logic, fake hardware, tests and a simulator. Standalone USB serial and GPIO27 reed-sensor Arduino sketches were uploaded and bench-tested by the user on 2026-10-05. Integrated ESP32 actuator firmware and networking are not implemented. The remaining sections describe planned integration. Web/API code remains in `services/web` and `services/api`.
 
 ## Proposed structure
 
