@@ -11,5 +11,7 @@
 // Remain disabled until pulse duration, wiring, reset behavior and duty cycle are validated.
 #define ACTUATION_ENABLED false
 #define MAX_PULSE_MS 5000
+#ifndef OTA_ENABLED
 #define OTA_ENABLED false
+#endif
 #define OTA_MAX_IMAGE_BYTES 1310720

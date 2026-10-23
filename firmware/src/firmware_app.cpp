@@ -8,6 +8,8 @@
 #include "../include/locker.h"
 #include "../include/door_sensor.h"
 #include "../include/firmware_app.h"
+#include "../include/ota_update.h"
+#include "../include/version.h"
 
 #if __has_include("../include/config.local.h")
 #include "../include/config.local.h"
@@ -50,6 +52,15 @@ String outcomeReason;
 int64_t watermark = 0;
 
 bool pendingReport = false;
+
+int request(const String& path, const String& body, String& response);
+uint32_t otaMillis() { return millis(); }
+bool otaDeviceIdle() {
+  return !actuator || actuator->outputState() == locker::OutputState::Inactive;
+}
+OtaDependencies otaDependencies() {
+  return {&prefs, request, otaMillis, otaDeviceIdle};
+}
 
 locker::DoorSensor sensor;
 uint32_t lastHeartbeat = 0;
@@ -278,7 +289,7 @@ int request(
 // Heartbeat
 // --------------------------------------------------
 
-void heartbeat() {
+int heartbeat() {
   refreshSensor();
   const String reportedDoor = sensor.fresh(millis()) ? doorState() : "UNKNOWN";
   if (!sensor.fresh(millis())) Serial.println("Reed unsettled: heartbeat reports UNKNOWN; output remains inhibited");
@@ -299,7 +310,7 @@ void heartbeat() {
   cJSON_AddStringToObject(
     b,
     "firmwareVersion",
-    "locker-firmware-0.2"
+    FIRMWARE_VERSION
   );
 
   cJSON_AddBoolToObject(
@@ -327,6 +338,7 @@ void heartbeat() {
     code,
     reportedDoor.c_str()
   );
+  return code;
 }
 
 
@@ -885,6 +897,9 @@ void begin() {
   Serial.println(
     "================================="
   );
+
+  otaBegin(otaDependencies(), storageReady, WiFi.status() == WL_CONNECTED,
+           time(nullptr) >= 1767225600);
 }
 
 
@@ -955,6 +970,8 @@ void run() {
     return;
   }
 
+  otaCheckHealth();
+
 
   // --------------------------------------------------
   // WIFI RECONNECT
@@ -986,6 +1003,11 @@ void run() {
     return;
   }
 
+  if (!pendingReport && storageReady) {
+    otaPoll(storageReady, pendingReport, WiFi.status() == WL_CONNECTED,
+            time(nullptr) >= 1767225600);
+  }
+
 
   // --------------------------------------------------
   // HEARTBEAT
@@ -1000,7 +1022,10 @@ void run() {
     lastHeartbeat =
       millis();
 
-    heartbeat();
+    const int heartbeatCode = heartbeat();
+    otaMarkHealthy(heartbeatCode == 200, storageReady,
+                   WiFi.status() == WL_CONNECTED,
+                   time(nullptr) >= 1767225600);
   }
 
 
@@ -1025,7 +1050,7 @@ void run() {
       report();
     }
     else if (
-      storageReady
+      storageReady && !otaHealthGateOpen()
     ) {
 
       poll();
