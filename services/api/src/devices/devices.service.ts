@@ -14,6 +14,10 @@ export const ONLINE_MS = 15000;
 export const COMMAND_TTL_MS = 10000;
 export const COOLDOWN_MS = 30000;
 const outcomes = ['OUTPUT_PULSE_COMPLETED', 'REJECTED', 'FAILED', 'UNKNOWN'];
+const deliveredGraceMs = () => {
+  const value = Number(process.env.OTA_DELIVERED_GRACE_MS ?? 300000);
+  return Number.isSafeInteger(value) && value > 0 ? value : 300000;
+};
 
 @Injectable()
 export class DevicesService {
@@ -147,6 +151,23 @@ export class DevicesService {
     return this.db.$transaction(async (tx) => {
       // Serialize competing requests for this physical device, including across API processes.
       await tx.$queryRaw`SELECT "id" FROM "LockerDevice" WHERE "id" = ${id} FOR UPDATE`;
+      const firmwareUpdate = await tx.firmwareUpdate.findFirst({
+        where: {
+          deviceId: id,
+          result: null,
+          OR: [
+            { deliveredAt: null, expiresAt: { gt: new Date() } },
+            {
+              deliveredAt: {
+                not: null,
+                gt: new Date(Date.now() - deliveredGraceMs()),
+              },
+            },
+          ],
+        },
+      });
+      if (firmwareUpdate)
+        throw new ConflictException('A firmware update is in flight');
       const d = await tx.lockerDevice.findUnique({
         where: { id },
         include: { locker: true },

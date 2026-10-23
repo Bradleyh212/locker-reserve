@@ -63,6 +63,8 @@ model LockerDevice {
   actuationEnabled Boolean @default(false)
   maxPulseMs Int @default(0)
   commands DeviceCommand[]
+  firmwareReleases FirmwareRelease[]
+  firmwareUpdates FirmwareUpdate[]
 }
 
 model DeviceCommand {
@@ -78,5 +80,42 @@ model DeviceCommand {
   result String?
   resultReason String?
   completedAt DateTime?
+  @@index([deviceId, issuedAt])
+}
+
+model FirmwareRelease {
+  id String @id @default(uuid())
+  deviceId String
+  device LockerDevice @relation(fields: [deviceId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  version String
+  buildNumber Int
+  sha256 String @db.Char(64)
+  sizeBytes Int
+  fileName String
+  notes String?
+  createdAt DateTime @default(now())
+  updates FirmwareUpdate[]
+
+  @@unique([deviceId, version])
+  @@unique([deviceId, buildNumber])
+  @@index([deviceId, createdAt])
+}
+
+model FirmwareUpdate {
+  id String @id @default(uuid())
+  deviceId String
+  device LockerDevice @relation(fields: [deviceId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  releaseId String
+  release FirmwareRelease @relation(fields: [releaseId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  requestedBy String
+  reason String
+  issuedAt DateTime @default(now())
+  expiresAt DateTime
+  deliveredAt DateTime?
+  result String?
+  resultReason String?
+  reportedFirmwareVersion String?
+  completedAt DateTime?
+
   @@index([deviceId, issuedAt])
 }

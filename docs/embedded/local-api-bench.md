@@ -37,6 +37,11 @@ Implemented routes:
 - GET /v1/device/commands/next (same credential; 204 if no valid command)
 - POST /v1/device/commands/:id/result (idempotent matching result)
 
+Firmware OTA release storage is disabled by default. When enabled, set
+`FIRMWARE_RELEASE_DIR`; the publish script uses `.device-local/firmware/` when
+that variable is unset. This directory is gitignored and holds per-device
+firmware images, which contain that device's compiled token.
+
 Commands expire in 10 seconds; per-device row locking serializes admin requests.
 Minimum interval is 30 seconds. A missing/UNKNOWN result blocks further commands,
 even after expiry; expiration does not prove the pulse did not occur. At this stage

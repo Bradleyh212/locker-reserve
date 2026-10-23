@@ -16,6 +16,7 @@ describe('device command boundaries', () => {
         findUnique: jest.fn(),
         update: jest.fn(),
       },
+      firmwareUpdate: { findFirst: jest.fn().mockResolvedValue(null) },
       $queryRaw: jest.fn(),
     };
     db.$transaction = async (fn: any) => fn(db);
@@ -177,6 +178,14 @@ describe('device command boundaries', () => {
     await expect(
       service.enqueue('d', { pulseMs: 100, reason: 'bench' }, 'admin'),
     ).rejects.toThrow();
+    expect(db.deviceCommand.create).not.toHaveBeenCalled();
+  });
+  it('refuses unlock while a firmware update is in flight', async () => {
+    ready();
+    db.firmwareUpdate.findFirst.mockResolvedValue({ id: 'firmware-update' });
+    await expect(
+      service.enqueue('d', { pulseMs: 100, reason: 'bench test' }, 'admin'),
+    ).rejects.toThrow('A firmware update is in flight');
     expect(db.deviceCommand.create).not.toHaveBeenCalled();
   });
   it('records actor, reason and bounded expiry under a device row lock', async () => {
