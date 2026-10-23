@@ -143,3 +143,12 @@ vite.config.ts.timestamp-*
 
 # Swp
 *.swp
+
+# Private local device credentials and TLS material
+.device-local/
+
+# Local dev supervisor state and logs
+.local-dev/
+
+# Python startup-script bytecode
+scripts/__pycache__/
