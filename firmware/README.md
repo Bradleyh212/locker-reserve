@@ -104,3 +104,57 @@ reset-time pin float or failed MOSFET requires hardware mitigation. Physical tim
 coil heating/duty cycle and reset/brownout behavior still need bench verification.
 A reed contact cannot distinguish an open door from a disconnected wire; a shorted
 wire can resemble CLOSED. None of these states proves latch engagement.
+
+
+## Host tests and simulator
+
+Requirements: a C++17 compiler (`c++`, or set `CXX`) and a POSIX shell. On macOS,
+Xcode Command Line Tools supply the compiler. Docker, Stripe, Wi-Fi credentials
+and API environment files are not needed for these hardware-free tests.
+
+From the repository root:
+
+```sh
+sh firmware/scripts/run-host.sh
+```
+
+This compiles and runs controller/sensor tests and a deterministic simulation
+without sleeps or real hardware. Outputs stay in ignored `firmware/build/`.
+The fake output is in `sim/`, with a simulated clock supplied by the demo.
+Expected simulation output:
+
+```text
+Simulation: output inactive; door unknown
+Simulation: output active
+Simulation: deadline reached; output inactive; door unknown
+```
+
+Tests cover boot reset, pulse limits, no extension while busy, 32-bit clock wrap,
+late ticks, explicit stop, missing sensors, debounce and communication gaps.
+The 500/1000 ms demo values are simulation fixtures, not selected lock ratings.
+The simulator has no sensor adapter, so its door state stays UNKNOWN.
+
+## Shared controller boundaries and diagnostic history
+
+`Locker::requestPulse` is a low-level actuator request, not an authorized customer
+unlock. The shared controller alone has no command IDs, expiry, persistence or
+reboot journal. The main firmware application supplies those protections and
+checks fresh CLOSED before requesting a pulse. Do not expose the controller
+itself directly to a network endpoint. See the
+[device contract](../docs/embedded/device-api.md) and
+[access policy](../docs/embedded/access-control.md) for the surrounding requirements.
+
+The controller is single-threaded and requires the output adapter to outlive it.
+It uses caller-supplied monotonic milliseconds. `tick()` must run frequently;
+output turns off when tick/stop runs, so blocking calls can delay cutoff. The main
+application avoids blocking HTTP/NVS work while output is active. Clock arithmetic
+supports one 32-bit wrap, not gaps spanning an entire clock period. Independent
+cutoff/watchdog design and boot-pin behavior still require hardware validation.
+
+The standalone [USB serial](usb-check/README.md) and
+[reed sensor](reed-check/README.md) sketches were bench-tested by Bradley on
+2026-10-05 with ESP32 Dev Module and Espressif core 3.3.12. They remain separate
+diagnostics. The earlier scaffold roadmap for GPIO, Wi-Fi, HTTPS, journal and
+debounced input is now implemented in the main target described above; it is not
+an outstanding prerequisite for compiling that target. PlatformIO is not required.
+See [hardware selection](../docs/embedded/hardware.md) for physical constraints.
