@@ -12,6 +12,7 @@ import {
 import ThemeSelector from './ThemeSelector'
 
 const navItems = [
+	{ href: '/devices', label: 'Devices', Icon: LockerIcon },
 	{ href: '/', label: 'Dashboard', Icon: DashboardIcon },
 	{ href: '/lockers', label: 'Lockers', Icon: LockerIcon },
 	{ href: '/reservations', label: 'Reservations', Icon: ReservationIcon },
@@ -51,6 +52,8 @@ export default function RequireAdminAuth({
 	}, [router])
 
 	useEffect(() => {
+		// Session revalidation intentionally sets loading before the external request.
+		// eslint-disable-next-line react-hooks/set-state-in-effect
 		checkSession()
 
 		window.addEventListener(ADMIN_SESSION_CHANGED_EVENT, checkSession)

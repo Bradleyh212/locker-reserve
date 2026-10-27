@@ -1,2 +1,4 @@
 /build/
 /.pio/
+
+**/config.local.h

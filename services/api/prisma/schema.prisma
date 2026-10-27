@@ -23,6 +23,7 @@ model Locker {
   updatedAt DateTime @updatedAt
 
   reservations Reservation[]
+  device LockerDevice?
 }
 
 model Reservation {
@@ -46,4 +47,36 @@ model PaymentEvent {
   id            String   @id @default(uuid())
   stripeEventId String   @unique
   createdAt     DateTime @default(now())
+}
+
+// One bench controller per locker. Credentials are stored only as SHA-256 hashes.
+model LockerDevice {
+  id String @id
+  lockerId String @unique
+  locker Locker @relation(fields: [lockerId], references: [id])
+  tokenHash String @unique
+  enabled Boolean @default(true)
+  lastSeen DateTime?
+  doorState String @default("UNKNOWN")
+  outputState String @default("INACTIVE")
+  firmwareVersion String @default("unknown")
+  actuationEnabled Boolean @default(false)
+  maxPulseMs Int @default(0)
+  commands DeviceCommand[]
+}
+
+model DeviceCommand {
+  id String @id @default(uuid())
+  deviceId String
+  device LockerDevice @relation(fields: [deviceId], references: [id])
+  lockerId String
+  requestedBy String
+  reason String
+  pulseMs Int
+  issuedAt DateTime @default(now())
+  expiresAt DateTime
+  result String?
+  resultReason String?
+  completedAt DateTime?
+  @@index([deviceId, issuedAt])
 }
