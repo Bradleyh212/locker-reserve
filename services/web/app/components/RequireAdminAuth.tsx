@@ -12,6 +12,7 @@ import {
 import ThemeSelector from './ThemeSelector'
 
 const navItems = [
+	{ href: '/devices', label: 'Devices', Icon: LockerIcon },
 	{ href: '/', label: 'Dashboard', Icon: DashboardIcon },
 	{ href: '/lockers', label: 'Lockers', Icon: LockerIcon },
 	{ href: '/reservations', label: 'Reservations', Icon: ReservationIcon },

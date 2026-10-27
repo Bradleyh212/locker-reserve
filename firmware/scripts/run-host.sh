@@ -10,3 +10,7 @@ compiler=${CXX:-c++}
 
 "$compiler" -std=c++17 -Wall -Wextra -Werror -pedantic   -I"$firmware_dir/include" -I"$firmware_dir/sim"   "$firmware_dir/src/locker.cpp" "$firmware_dir/sim/main.cpp"   -o "$firmware_dir/build/locker-sim"
 "$firmware_dir/build/locker-sim"
+
+"$compiler" -std=c++17 -Wall -Wextra -Werror -pedantic -I"$firmware_dir/include" \
+  "$firmware_dir/test/device_protocol_test.cpp" -o "$firmware_dir/build/device-protocol-tests"
+"$firmware_dir/build/device-protocol-tests"

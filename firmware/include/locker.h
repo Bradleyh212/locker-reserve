@@ -4,6 +4,8 @@
 
 namespace locker {
 
+constexpr std::uint32_t HARD_MAX_PULSE_MS = 5000;
+
 // Output state deliberately makes no claim about the physical latch or door.
 enum class OutputState { Inactive, Active };
 enum class DoorState { Unknown, Open, Closed };
