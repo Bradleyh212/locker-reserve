@@ -6,6 +6,7 @@
 #include <cJSON.h>
 #include <time.h>
 #include "../include/locker.h"
+#include "../include/device_protocol.h"
 #include "../include/door_sensor.h"
 #include "../include/firmware_app.h"
 
@@ -50,6 +51,9 @@ String outcomeReason;
 int64_t watermark = 0;
 
 bool pendingReport = false;
+bool reportBlocked = false;
+uint32_t reportLastAttempt = 0;
+uint32_t reportRetryDelay = 0;
 
 locker::DoorSensor sensor;
 uint32_t lastHeartbeat = 0;
@@ -96,6 +100,7 @@ bool saveJournal() {
   cJSON_AddStringToObject(j, "result", outcome.c_str());
   cJSON_AddStringToObject(j, "reason", outcomeReason.c_str());
   cJSON_AddBoolToObject(j, "pending", pendingReport);
+  cJSON_AddBoolToObject(j, "reportBlocked", reportBlocked);
 
   String record = jsonString(j);
 
@@ -141,58 +146,7 @@ const char* doorState() {
 // with milliseconds from the NestJS API.
 
 int64_t timestamp(const String& s) {
-  int y, m, d, h, min, sec, ms;
-  char extra;
-
-  if (
-    s.length() != 24 || s[4] != '-' || s[7] != '-' ||
-    s[10] != 'T' || s[13] != ':' || s[16] != ':' ||
-    s[19] != '.' || s[23] != 'Z' ||
-    sscanf(
-      s.c_str(),
-      "%4d-%2d-%2dT%2d:%2d:%2d.%3dZ%c",
-      &y,
-      &m,
-      &d,
-      &h,
-      &min,
-      &sec,
-      &ms,
-      &extra
-    ) != 7
-  ) {
-    return 0;
-  }
-
-  if (
-    y < 2026 ||
-    m < 1 || m > 12 ||
-    d < 1 || d > 31 ||
-    h > 23 ||
-    min > 59 ||
-    sec > 59 ||
-    ms > 999
-  ) {
-    return 0;
-  }
-
-  for (unsigned i = 0; i < 24; ++i) {
-    if (i == 4 || i == 7 || i == 10 || i == 13 || i == 16 || i == 19 || i == 23) continue;
-    if (s[i] < '0' || s[i] > '9') return 0;
-  }
-  tm t = {};
-
-  t.tm_year = y - 1900;
-  t.tm_mon = m - 1;
-  t.tm_mday = d;
-  t.tm_hour = h;
-  t.tm_min = min;
-  t.tm_sec = sec;
-
-  const time_t seconds = mktime(&t);
-  if (t.tm_year != y - 1900 || t.tm_mon != m - 1 || t.tm_mday != d ||
-      t.tm_hour != h || t.tm_min != min || t.tm_sec != sec) return 0;
-  return (int64_t)seconds * 1000 + ms;
+  return locker::protocol::timestamp(s.c_str());
 }
 
 
@@ -305,7 +259,7 @@ void heartbeat() {
   cJSON_AddBoolToObject(
     b,
     "actuationEnabled",
-    ACTUATION_ENABLED && storageReady
+    ACTUATION_ENABLED && storageReady && !reportBlocked
   );
 
   cJSON_AddNumberToObject(
@@ -335,36 +289,34 @@ void heartbeat() {
 // --------------------------------------------------
 
 void report() {
+  // Never send an outcome that failed to reach durable storage.
+  if (!storageReady || reportBlocked ||
+      millis() - reportLastAttempt < reportRetryDelay) return;
+  reportLastAttempt = millis();
   cJSON* b = cJSON_CreateObject();
-
-  cJSON_AddStringToObject(
-    b,
-    "result",
-    outcome.c_str()
-  );
-
-  cJSON_AddStringToObject(
-    b,
-    "reason",
-    outcomeReason.c_str()
-  );
-
+  cJSON_AddStringToObject(b, "result", outcome.c_str());
+  cJSON_AddStringToObject(b, "reason", outcomeReason.c_str());
   String response;
-
-  if (
-    request(
-      "/v1/device/commands/" +
-      consumedId +
-      "/result",
-      jsonString(b),
-      response
-    ) == 200
-  ) {
-    pendingReport = false;
-
-    if (!saveJournal()) {
-      storageReady = false;
+  const int status = request("/v1/device/commands/" + consumedId + "/result", jsonString(b), response);
+  if (status == 200) {
+    // Require the API's explicit acknowledgment before clearing the journal.
+    cJSON* ack = cJSON_Parse(response.c_str());
+    const bool accepted = ack && cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(ack, "accepted"));
+    cJSON_Delete(ack);
+    if (accepted) {
+      pendingReport = false;
+      reportRetryDelay = 0;
+      if (!saveJournal()) { pendingReport = true; storageReady = false; }
+      return;
     }
+  }
+  Serial.printf("Command result HTTP %d; journal retained\n", status);
+  if (locker::protocol::terminalReportStatus(status)) {
+    reportBlocked = true;
+    if (!saveJournal()) storageReady = false;
+    Serial.println("RESULT REPORT BLOCKED: operator reconciliation required; no further commands");
+  } else {
+    reportRetryDelay = reportRetryDelay ? locker::protocol::nextRetryDelay(reportRetryDelay) : 2000;
   }
 }
 
@@ -429,55 +381,35 @@ void poll() {
   int64_t now =
     (int64_t)time(nullptr) * 1000;
 
-  bool valid =
-    cJSON_IsNumber(version) &&
-    version->valuedouble == 1 &&
-
-    id.length() == 36 &&
-
-    stringField(b, "deviceId") ==
-      DEVICE_ID &&
-
-    stringField(b, "lockerId") ==
-      LOCKER_ID &&
-
-    stringField(b, "type") ==
-      "UNLOCK_PULSE" &&
-
-    cJSON_IsNumber(duration) &&
-
-    duration->valuedouble ==
-      duration->valueint &&
-
-    duration->valueint > 0 &&
-
-    duration->valueint <=
-      MAX_PULSE_MS &&
-
-    issued > watermark &&
-
-    issued <= now + 1000 &&
-
-    expires > now + 1000 &&
-
-    expires > issued &&
-
-    expires - issued <= 10000;
-
-  int pulse =
-    duration &&
-    cJSON_IsNumber(duration)
-      ? duration->valueint
-      : 0;
-
+  const bool addressed = locker::protocol::commandId(id.c_str()) &&
+    stringField(b, "deviceId") == DEVICE_ID && stringField(b, "lockerId") == LOCKER_ID;
+  const bool versionAndType = cJSON_IsNumber(version) && version->valuedouble == 1 &&
+    stringField(b, "type") == "UNLOCK_PULSE";
+  const bool durationValid = cJSON_IsNumber(duration) && duration->valuedouble == duration->valueint &&
+    duration->valueint > 0 && duration->valueint <= MAX_PULSE_MS;
+  const int pulse = cJSON_IsNumber(duration) ? duration->valueint : 0;
+  const char* rejection = locker::protocol::rejection(versionAndType, durationValid,
+    issued, expires, now, watermark, ACTUATION_ENABLED);
   cJSON_Delete(b);
 
-  if (
-    !valid ||
-    !storageReady ||
-    !ACTUATION_ENABLED ||
-    id == consumedId
-  ) {
+  // Never acknowledge malformed identities or commands intended for another device.
+  if (!addressed || !storageReady) {
+    Serial.println("Command ignored: invalid target/identity or unavailable journal");
+    return;
+  }
+  if (id == consumedId) {
+    // Redelivery repeats the recorded result, never the physical pulse.
+    pendingReport = true;
+    if (!saveJournal()) storageReady = false;
+    return;
+  }
+  if (rejection) {
+    consumedId = id;
+    outcome = "REJECTED";
+    outcomeReason = rejection;
+    pendingReport = true;
+    // Rejected timestamps (especially future timestamps) cannot advance replay protection.
+    if (!saveJournal()) storageReady = false;
     return;
   }
 
@@ -659,6 +591,9 @@ void begin() {
     }
     else {
 
+      reportBlocked = cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(j, "reportBlocked"));
+      if (reportBlocked) Serial.println("RESULT REPORT BLOCKED: persisted fault; reconcile before further commands");
+
       consumedId =
         stringField(
           j,
@@ -693,7 +628,7 @@ void begin() {
         consumedId.length() !=
           36 ||
 
-        watermark <= 0 ||
+        watermark < 0 ||
 
         !outcome.length()
       ) {

@@ -18,7 +18,7 @@ This migration does not establish production security or a hardware duty rating.
 - `include/config.local.h`: private main configuration, ignored by Git.
 - `test/`, `sim/`, `scripts/run-host.sh`: hardware-free tests and simulation.
 - `device-check/`, `usb-check/`, `reed-check/`: independent diagnostics.
-- `circuit-check/`: archived early circuit experiment; may hold the coil on.
+- `circuit-check/`: historical wiring diagnostic; output always LOW, no actuation.
 
 ## Build and flash
 
@@ -158,3 +158,29 @@ diagnostics. The earlier scaffold roadmap for GPIO, Wi-Fi, HTTPS, journal and
 debounced input is now implemented in the main target described above; it is not
 an outstanding prerequisite for compiling that target. PlatformIO is not required.
 See [hardware selection](../docs/embedded/hardware.md) for physical constraints.
+
+## Review hardening: command results and provisioning
+
+Both network firmware targets parse command timestamps explicitly as UTC and
+journal identifiable, correctly addressed rejections with a reason. Invalid
+identities or foreign targets are ignored without acknowledging another device's
+command. Rejected timestamps never advance the replay watermark; duplicate IDs
+re-send their recorded result without another pulse.
+
+Result delivery requires HTTP 200 with `accepted: true`. Transport/server failures,
+408 and 429 retry with bounded exponential delay (2–60 seconds). Other 4xx responses
+persist a report-blocked fault and stop new commands, including after reboot.
+Serial output identifies this fault, and heartbeats advertise actuation disabled so
+the API/dashboard cannot enqueue further unlocks after observing it. An operator must inspect the command/result,
+resolve credentials or server discrepancies, and explicitly clear only the
+`reportBlocked` journal flag using a controlled maintenance procedure before
+retrying the identical pending result. No automatic reset, journal deletion,
+re-actuation or queue bypass is provided. Keep the consumed ID, watermark, result,
+reason and pending flag intact; this release does not include a maintenance UI.
+
+Provisioning writes and flushes the exclusive 0600 credential file before database
+creation. Known database rejections remove the new file. An uncertain database
+commit retains it for recovery: inspect the device row before retrying. Filesystem
+and database operations are not one atomic transaction. Errors use fixed messages
+rather than exposing raw database/connection details. Run its failure-path tests:
+`node --test services/api/scripts/provision-device.test.cjs`.

@@ -1,40 +1,28 @@
 #include <Arduino.h>
+#include "../include/door_sensor.h"
 
+// Historical wiring diagnostic: deliberately never energizes the solenoid.
 constexpr int DOOR_PIN = 27;
 constexpr int LOCK_PIN = 26;
-
-bool lastMagnetDetected;
+locker::DoorSensor sensor;
+locker::DoorState lastState = locker::DoorState::Unknown;
 
 void setup() {
-  Serial.begin(115200);
-
-  pinMode(DOOR_PIN, INPUT_PULLUP);
-  pinMode(LOCK_PIN, OUTPUT);
-
   digitalWrite(LOCK_PIN, LOW);
-
-  lastMagnetDetected = digitalRead(DOOR_PIN) == LOW;
-
-  // Print initial state once
-  Serial.println(lastMagnetDetected
-    ? "Magnet detected -> UNLOCKED"
-    : "No magnet -> LOCKED");
+  pinMode(LOCK_PIN, OUTPUT);
+  pinMode(DOOR_PIN, INPUT_PULLUP);
+  Serial.begin(115200);
+  Serial.println("Circuit diagnostic: output inactive; contact UNKNOWN; no actuation");
 }
 
 void loop() {
-  const bool magnetDetected = digitalRead(DOOR_PIN) == LOW;
-
-  if (magnetDetected != lastMagnetDetected) {
-    if (magnetDetected) {
-      digitalWrite(LOCK_PIN, HIGH);
-      Serial.println("Magnet detected -> UNLOCKED");
-    } else {
-      digitalWrite(LOCK_PIN, LOW);
-      Serial.println("No magnet -> LOCKED");
-    }
-
-    lastMagnetDetected = magnetDetected;
+  sensor.sample(digitalRead(DOOR_PIN) == LOW, millis());
+  const auto state = sensor.state(millis());
+  if (state != lastState) {
+    Serial.println(state == locker::DoorState::Closed ? "Contact CLOSED; output inactive" :
+                   state == locker::DoorState::Open ? "Contact OPEN; output inactive" :
+                   "Contact UNKNOWN; output inactive");
+    lastState = state;
   }
-
-  delay(50);
+  delay(1);
 }
