@@ -1,6 +1,6 @@
 # Device API contract proposal (v1)
 
-Status: design proposal only. None of these routes, credentials or database entities exist yet. Paths are internal NestJS routes; an HTTPS proxy may expose them under `/api`. Initial transport proposal is outbound HTTPS polling; see [ADR 0003](../adr/0003-device-transport.md).
+Status: target contract. An admin-only bench subset now exists; see [local API bench](local-api-bench.md). Customer reservation unlock requests and production commissioning remain planned. Paths are internal NestJS routes; an HTTPS proxy may expose them under `/api`. Initial transport proposal is outbound HTTPS polling; see [ADR 0003](../adr/0003-device-transport.md).
 
 ## Identity and endpoints
 

@@ -1,4 +1,4 @@
-#include "locker.h"
+#include "../include/locker.h"
 
 namespace locker {
 
@@ -9,7 +9,7 @@ Locker::Locker(LockOutput& output, std::uint32_t maxPulseMs)
 
 PulseResult Locker::requestPulse(std::uint32_t durationMs, std::uint32_t nowMs) {
   if (state_ == OutputState::Active) return PulseResult::Busy;
-  if (durationMs == 0 || durationMs > maxPulseMs_)
+  if (durationMs == 0 || durationMs > maxPulseMs_ || durationMs > HARD_MAX_PULSE_MS)
     return PulseResult::InvalidDuration;
   startedAtMs_ = nowMs;
   durationMs_ = durationMs;

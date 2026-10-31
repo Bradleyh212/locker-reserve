@@ -186,14 +186,25 @@ your teammates' lockers or reservations.
 From the project root:
 
 ```bash
-./scripts/start-local.sh
+./scripts/dev-start.sh
 ```
 
-This starts the local PostgreSQL and Redis Docker services, installs
-dependencies, applies Prisma migrations, and starts:
+Run this in your own terminal and keep it open; it does not depend on Codex.
+It checks dependencies, starts healthy PostgreSQL/Redis containers, generates
+Prisma Client when needed, applies existing migrations, and waits for API/web
+readiness. Matching installed dependencies are reused. `start-local.sh` remains
+an alias to the same supervisor.
+
+Services:
 
 - API: `http://localhost:3001`
 - Web: `http://localhost:3000`
+
+Use `./scripts/dev-status.sh` to inspect health and ownership,
+`./scripts/dev-stop.sh` (or Ctrl+C) to stop API/web, and
+`./scripts/dev-reset.sh` to safely revalidate dependencies, regenerate Prisma and
+restart. DB data is preserved. See [local development](docs/local-development.md)
+for prerequisites, ports, recovery and the startup audit.
 
 After logging in at `/login`, the browser should receive an `httpOnly`
 `locker_reserve_admin` cookie. No JWT should appear in `localStorage`.
