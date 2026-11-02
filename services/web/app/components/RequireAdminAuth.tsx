@@ -52,6 +52,8 @@ export default function RequireAdminAuth({
 	}, [router])
 
 	useEffect(() => {
+		// Session revalidation intentionally sets loading before the external request.
+		// eslint-disable-next-line react-hooks/set-state-in-effect
 		checkSession()
 
 		window.addEventListener(ADMIN_SESSION_CHANGED_EVENT, checkSession)

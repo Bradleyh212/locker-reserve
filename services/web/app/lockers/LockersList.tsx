@@ -51,8 +51,8 @@ export default function LockersList({
 			}
 
 			onChanged()
-		} catch (e: any) {
-			setError(e?.message ?? 'Network error')
+		} catch (e: unknown) {
+			setError((e as { message?: string } | null)?.message ?? 'Network error')
 		} finally {
 			setLoadingId(null)
 		}

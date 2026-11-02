@@ -212,3 +212,10 @@ After logging in at `/login`, the browser should receive an `httpOnly`
 Use `/book` to test the public booking flow. The page uses the public
 availability, hold, and payment-intent endpoints while preserving the admin
 routes behind cookie-based authentication.
+
+## Continuous integration
+
+GitHub Actions validates API, web, firmware and development tooling on PRs to
+`main` and pushes to `main`, using disposable services and no secrets. See
+[CI checks and required-check setup](docs/continuous-integration.md). Deployment
+is a separate phase and is not automated by this workflow.
