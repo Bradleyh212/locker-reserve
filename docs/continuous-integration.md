@@ -11,7 +11,7 @@ branch ruleset. This change does not modify branch protection automatically.
 
 | Required check | What it validates |
 | --- | --- |
-| `api` | npm lockfile install, Prisma generation and migrations, 31 unit/device HTTP/database tests, two application e2e smoke tests, Nest TypeScript build |
+| `api` | npm lockfile install, Prisma generation and migrations, provisioning regression tests, unit/device HTTP/database tests, application e2e smoke tests, Nest TypeScript build |
 | `web` | npm lockfile install, existing ESLint command, TypeScript, normal production Next build |
 | `firmware` | C++17 host unit tests and simulator; ESP32 builds of main `src`, `device-check`, `usb-check`, `reed-check` |
 | `dev-tooling` | Shell/Python/Node syntax, six supervisor tests, fetch-timeout regression, local Compose syntax |
@@ -40,8 +40,8 @@ No local `.env`, Wi-Fi passwords, device tokens or TLS material enter the workfl
 `scripts/ci-firmware.py` compiles a temporary copy excluding all `config.local.h`
 files. It generates headers only from tracked example configuration, with actuation
 disabled, and removes the temporary tree afterward. Local headers are never
-modified. The helper never uploads firmware. The archived `circuit-check` experiment
-is excluded from supported targets because it can hold an output on when flashed.
+modified. The helper never uploads firmware. The historical `circuit-check` is now non-actuating following the firmware review
+fixes on `main`. It remains outside the four supported CI compilation targets.
 
 The workflow uses `contents: read`, disables persisted checkout credentials, and
 uses ordinary `pull_request`, not `pull_request_target`. Fork PRs need no secrets.
