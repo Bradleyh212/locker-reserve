@@ -7,7 +7,7 @@ export function formatDateTime(value: string) {
 	})
 }
 
-export function getApiErrorMessage(data: any, fallback: string) {
+export function getApiErrorMessage(data: { message?: string | string[] } | null | undefined, fallback: string) {
 	if (Array.isArray(data?.message)) {
 		return data.message.join(', ')
 	}

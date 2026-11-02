@@ -32,6 +32,8 @@ export default function CreateHoldForm({
 
 	useEffect(() => {
 		if (!activeLockers.some((locker) => locker.id === lockerId)) {
+			// Preserve the existing selection reset when its locker is removed/inactive.
+			// eslint-disable-next-line react-hooks/set-state-in-effect
 			setLockerId(activeLockers[0]?.id ?? '')
 		}
 	}, [activeLockers, lockerId])
@@ -70,8 +72,8 @@ export default function CreateHoldForm({
 			setStartTime('')
 			setEndTime('')
 			onChanged()
-		} catch (e: any) {
-			setError(e?.message ?? 'Network error')
+		} catch (e: unknown) {
+			setError((e as { message?: string } | null)?.message ?? 'Network error')
 		} finally {
 			setLoading(false)
 		}

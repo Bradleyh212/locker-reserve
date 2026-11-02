@@ -45,8 +45,8 @@ export default function PayReservationButton({
 			}
 
 			setClientSecret(data.client_secret)
-		} catch (e: any) {
-			setError(e?.message ?? 'Network error')
+		} catch (e: unknown) {
+			setError((e as { message?: string } | null)?.message ?? 'Network error')
 		} finally {
 			setLoading(false)
 		}

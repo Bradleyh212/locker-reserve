@@ -102,14 +102,16 @@ function Dashboard() {
 			}
 
 			setStats(data)
-		} catch (e: any) {
-			setError(e?.message ?? 'Network error')
+		} catch (e: unknown) {
+			setError((e as { message?: string } | null)?.message ?? 'Network error')
 		} finally {
 			setLoading(false)
 		}
 	}, [])
 
 	useEffect(() => {
+		// Initial fetch intentionally sets loading before synchronizing API data.
+		// eslint-disable-next-line react-hooks/set-state-in-effect
 		loadStats()
 	}, [loadStats])
 

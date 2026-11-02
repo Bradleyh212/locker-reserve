@@ -63,8 +63,8 @@ export default function CheckAvailabilityForm() {
 			}
 
 			setResults(data)
-		} catch (e: any) {
-			setError(e?.message ?? 'Network error')
+		} catch (e: unknown) {
+			setError((e as { message?: string } | null)?.message ?? 'Network error')
 			setResults([])
 		} finally {
 			setLoading(false)

@@ -44,6 +44,8 @@ export default function DevicesPage() {
     }
   }
   useEffect(() => {
+    // Initial polling synchronizes device observations from the external API.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void refresh();
     const t = setInterval(() => void refresh(), 3000);
     return () => clearInterval(t);

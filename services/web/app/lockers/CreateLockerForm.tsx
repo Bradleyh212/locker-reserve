@@ -60,8 +60,8 @@ export default function CreateLockerForm({
 			setIsActive(true)
 
 			onChanged()
-		} catch (err: any) {
-			setError(err?.message ?? 'Network error')
+		} catch (err: unknown) {
+			setError((err as { message?: string } | null)?.message ?? 'Network error')
 		} finally {
 			setLoading(false)
 		}
