@@ -2,6 +2,21 @@
 import { useEffect, useState } from "react";
 import RequireAdminAuth from "../components/RequireAdminAuth";
 import { apiUrl, authFetch } from "../lib/auth";
+import { formatDateTime } from "../lib/ui";
+import styles from "./devices.module.css";
+
+const statusLabels: Record<string, string> = {
+  OUTPUT_PULSE_COMPLETED: "Pulse completed",
+  EXPIRED_UNKNOWN: "Expired · outcome unknown",
+  REJECTED: "Rejected",
+  QUEUED: "Queued",
+  DELIVERED: "Delivered",
+};
+
+function readable(value: string) {
+  return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase().replaceAll("_", " ");
+}
+
 type Device = {
   id: string;
   online: boolean;
@@ -28,7 +43,7 @@ type Device = {
   }[];
 };
 export default function DevicesPage() {
-  const [devices, setDevices] = useState<Device[]>([]);
+  const [devices, setDevices] = useState<Device[] | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [connectionError, setConnectionError] = useState("");
@@ -86,7 +101,7 @@ export default function DevicesPage() {
       const b = await r.json();
       if (!r.ok) throw new Error(b.message ?? "Request failed");
       setNotice(
-        "Command queued. Waiting for the device result; the door is not confirmed unlocked.",
+        `Pulse request submitted for ${d.locker.code}. See activity for the device result.`,
       );
       // Keep the operator's selected duration; require confirmation again.
       const confirmation = form.elements.namedItem(
@@ -103,114 +118,88 @@ export default function DevicesPage() {
   return (
     <RequireAdminAuth>
       <main className="page">
-        <h1>Locker devices</h1>
-        <p>
-          Supervised prototype testing. Door contact and output activity do not
-          prove the locker is locked.
-        </p>
-        {connectionError && (
-          <p role="alert">
-            {connectionError}. Displayed observations may be stale; requests are
-            disabled.
-          </p>
-        )}
-        {notice && <p role="status">{notice}</p>}
-        {error && (
-          <p role="alert" className="alert alert-error">
-            {error}
-          </p>
-        )}
-        {!devices.length && <p>No devices provisioned yet.</p>}
-        {devices.map((d) => (
-          <section key={d.id} className="card">
-            <h2>
-              {d.locker.code} · {d.id}
-            </h2>
-            <p>
-              {d.online ? "Online" : "Offline — observations may be stale"} ·
-              Last seen:{" "}
-              {d.lastSeen ? new Date(d.lastSeen).toLocaleString() : "Never"}
-            </p>
-            <p>
-              Door contact: {d.doorState} · Output: {d.outputState}
-            </p>
-            <form
-              onSubmit={(event) => {
-                event.preventDefault();
-                void pulse(d, event.currentTarget);
-              }}
-            >
-              <fieldset
-                disabled={busy || !!connectionError || !d.unlock.allowed}
-              >
-                <legend>Supervised unlock test</legend>
-                <p>
-                  <label>
-                    Pulse duration (ms)
-                    <input
-                      name="pulseMs"
-                      type="number"
-                      min="1"
-                      max={d.unlock.maxPulseMs}
-                      step="1"
-                      placeholder={`1–${d.unlock.maxPulseMs} ms`}
-                      required
-                    />
-                  </label>
+        <header className="page-header">
+          <div>
+            <p className="eyebrow">Hardware</p>
+            <h1 className="page-title">Locker devices</h1>
+            <p className="lede">Monitor door contacts and run supervised unlock tests.</p>
+          </div>
+        </header>
+        <div className="grid">
+          {connectionError && <p className="alert alert-error" role="alert">Device updates paused. {connectionError}. Requests are disabled until updates resume.</p>}
+          {error && <p className="alert alert-error" role="alert">{error}</p>}
+          {notice && <p className="alert" role="status">{notice}</p>}
+          {!connectionError && !devices && <p className="loading-state">Loading devices…</p>}
+          {!connectionError && devices?.length === 0 && <p className="empty-state">No devices provisioned yet.</p>}
+          {devices?.map((d) => {
+            const stale = !!connectionError || !d.online;
+            const latest = d.commands[0];
+            return (
+              <section key={d.id} className={`card ${styles.device}`} aria-label={`Locker ${d.locker.code}`}>
+                <header className={styles.identity}>
+                  <div>
+                    <h2>Locker {d.locker.code}</h2>
+                    <p className={styles.deviceId}>{d.id}</p>
+                  </div>
+                  <span className={`badge ${stale ? "badge-muted" : "badge-success"}`}>
+                    {connectionError ? "Connection unknown" : d.online ? "Online" : "Offline"}
+                  </span>
+                </header>
+
+                <dl className={styles.readings}>
+                  <div><dt>Door contact</dt><dd>{readable(d.doorState)}</dd></div>
+                  <div><dt>Driver output</dt><dd>{readable(d.outputState)}</dd></div>
+                  <div><dt>Last seen</dt><dd>{d.lastSeen ? <time dateTime={d.lastSeen}>{formatDateTime(d.lastSeen)}</time> : "Never"}</dd></div>
+                </dl>
+                <p className={styles.caption}>
+                  {stale && "Readings may be stale. "}
+                  The contact and output readings do not confirm whether the latch is locked.
                 </p>
-                <p>
-                  <label>
-                    Reason (saved in history)
-                    <input
-                      name="reason"
-                      type="text"
-                      minLength={3}
-                      maxLength={200}
-                      placeholder="First web unlock test"
-                      required
-                    />
-                  </label>
-                </p>
-                <p>
-                  <label>
-                    <input name="confirmed" type="checkbox" required />I am
-                    supervising this test and the mechanism is clear.
-                  </label>
-                </p>
-                <button type="submit" className="button button-primary">
-                  {busy ? "Sending…" : `Send unlock pulse to ${d.locker.code}`}
-                </button>
-              </fieldset>
-            </form>
-            <p>
-              {d.unlock.blockedReason ??
-                `Ready for a supervised pulse (maximum ${d.unlock.maxPulseMs} ms).`}
-            </p>
-            <h3>Recent commands</h3>
-            {!d.commands.length && <p>No commands requested.</p>}
-            <ul>
-              {d.commands.map((c) => (
-                <li key={c.id}>
-                  {new Date(c.issuedAt).toLocaleString()}: {c.status} ·{" "}
-                  {c.pulseMs} ms
-                  <div>Reason: {c.reason}</div>
-                  {c.resultReason && <div>Device report: {c.resultReason}</div>}
-                  {c.status === "OUTPUT_PULSE_COMPLETED" && (
-                    <div>
-                      Output pulse completed; mechanical unlock not confirmed.
-                    </div>
-                  )}
-                  {c.status === "EXPIRED_UNKNOWN" && (
-                    <div>
-                      Expired without a result. Do not assume it did or did not
-                      activate.
-                    </div>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </section>
-        ))}
+
+                {d.unlock.allowed && !stale ? (
+                  <details className={styles.panel}>
+                    <summary>Run a supervised unlock test</summary>
+                    <form onSubmit={(event) => { event.preventDefault(); void pulse(d, event.currentTarget); }}>
+                      <fieldset disabled={busy} className={styles.controls}>
+                        <legend className="sr-only">Supervised unlock test for {d.locker.code}</legend>
+                        <div className={styles.fields}>
+                          <label className="field">Pulse duration (ms)
+                            <input name="pulseMs" type="number" min="1" max={d.unlock.maxPulseMs} step="1" placeholder={`1–${d.unlock.maxPulseMs}`} required />
+                          </label>
+                          <label className="field">Reason for test
+                            <input name="reason" type="text" minLength={3} maxLength={200} placeholder="Saved in command history" required />
+                          </label>
+                        </div>
+                        <label className={styles.confirm}><input name="confirmed" type="checkbox" required /> I am supervising this test and the mechanism is clear.</label>
+                        <button type="submit" className="button button-primary">{busy ? "Sending…" : `Send unlock pulse to ${d.locker.code}`}</button>
+                      </fieldset>
+                    </form>
+                  </details>
+                ) : (
+                  <div className={styles.blocked}>
+                    <strong>Unlock test unavailable</strong>
+                    <p>{connectionError ? "Waiting for a fresh device update." : d.unlock.blockedReason || "Waiting for a safe device state."}</p>
+                  </div>
+                )}
+
+                <details className={styles.history}>
+                  <summary>Recent activity <span className={styles.preview}>{latest ? `Latest: ${statusLabels[latest.status] ?? readable(latest.status)}` : "No commands yet"}</span></summary>
+                  {latest ? <ol className={styles.entries}>
+                    {d.commands.map((c) => (
+                      <li key={c.id}>
+                        <div className={styles.row}><strong>{statusLabels[c.status] ?? readable(c.status)}</strong><time dateTime={c.issuedAt}>{formatDateTime(c.issuedAt)}</time></div>
+                        <p>{c.pulseMs} ms · {c.reason}</p>
+                        {c.resultReason && <p>Device report: <code>{c.resultReason}</code></p>}
+                        {c.status === "OUTPUT_PULSE_COMPLETED" && <p>Physical unlock unconfirmed.</p>}
+                        {c.status === "EXPIRED_UNKNOWN" && <p>No result received. The pulse may have occurred.</p>}
+                      </li>
+                    ))}
+                  </ol> : <p className={styles.caption}>Requests will appear here once a test is submitted.</p>}
+                </details>
+              </section>
+            );
+          })}
+        </div>
       </main>
     </RequireAdminAuth>
   );
