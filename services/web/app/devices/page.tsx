@@ -193,10 +193,7 @@ export default function DevicesPage() {
                   <div><dt>Driver output</dt><dd>{readable(d.outputState)}</dd></div>
                   <div><dt>Last seen</dt><dd>{d.lastSeen ? <time dateTime={d.lastSeen}>{formatDateTime(d.lastSeen)}</time> : "Never"}</dd></div>
                 </dl>
-                <p className={styles.caption}>
-                  {stale && "Readings may be stale. "}
-                  The contact and output readings do not confirm whether the latch is locked.
-                </p>
+                {stale && <p className={styles.caption}>Readings may be stale.</p>}
 
                 {d.unlock.allowed && !stale ? (
                   <details className={styles.panel}>
@@ -218,7 +215,6 @@ export default function DevicesPage() {
 
                 <details className={styles.history}>
                   <summary>Recent activity <span className={styles.preview}>{latest ? `Latest: ${statusLabels[latest.status] ?? readable(latest.status)}` : "No commands yet"}</span></summary>
-                  {latest && <p className={styles.caption}>A completed pulse means the device finished driving the solenoid. There is no sensor on the latch to confirm it released.</p>}
                   {latest ? <ol className={styles.entries}>
                     {d.commands.map((c) => (
                       <li key={c.id}>
