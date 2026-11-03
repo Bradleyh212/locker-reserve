@@ -1,38 +1,19 @@
-FROM node:20-alpine AS deps
-
+FROM node:24.21.0-bookworm-slim@sha256:d6aa754f16b3197301076f047b5def2f02ea1dbbc2ca920407d46d7ec7f87b20 AS builder
 WORKDIR /app
-
 COPY package*.json ./
 RUN npm ci
-
-FROM node:20-alpine AS builder
-
-WORKDIR /app
-
-COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-
 ARG NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
-ENV NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=$NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
-
 ARG NEXT_PUBLIC_API_BASE_URL
-ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
-
+ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
-FROM node:20-alpine AS runner
-
+FROM node:24.21.0-bookworm-slim@sha256:d6aa754f16b3197301076f047b5def2f02ea1dbbc2ca920407d46d7ec7f87b20 AS runner
 WORKDIR /app
-
-ENV NODE_ENV=production
-
-COPY package*.json ./
-RUN npm ci --omit=dev
-
-COPY --from=builder /app/.next ./.next
+ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000 HOSTNAME=0.0.0.0
+COPY --from=builder --chown=node:node /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
-COPY --from=builder /app/next.config.mjs ./next.config.mjs
-
+USER node
 EXPOSE 3000
-
-CMD ["npm", "run", "start"]
+CMD ["node", "server.js"]

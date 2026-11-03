@@ -1,5 +1,9 @@
-node_modules
-.next
-.env
-.env.*
-npm-debug.log
+**
+!package*.json
+!tsconfig.json
+!next.config.mjs
+!postcss.config.mjs
+!app/
+!app/**
+!public/
+!public/**

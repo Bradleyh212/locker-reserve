@@ -1,0 +1,16 @@
+# Template for loading reviewed candidate images. Supply separate backing services.
+services:
+  api:
+    image: ${API_IMAGE:?set reviewed API image reference}
+    env_file:
+      - ${API_ENV_FILE:?set absolute path to runtime secrets outside checkout}
+    environment:
+      NODE_ENV: production
+      PORT: "3001"
+      DEVICE_MAX_PULSE_MS: "0"
+    ports:
+      - "127.0.0.1:3001:3001"
+  web:
+    image: ${WEB_IMAGE:?set reviewed web image reference}
+    ports:
+      - "127.0.0.1:3000:3000"

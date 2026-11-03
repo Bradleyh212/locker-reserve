@@ -1,5 +1,8 @@
-node_modules
-dist
-.env
-.env.*
-npm-debug.log
+**
+!package*.json
+!tsconfig*.json
+!nest-cli.json
+!src/
+!src/**
+!prisma/
+!prisma/**
