@@ -54,3 +54,5 @@ For an application rollback, restore the previous image versions only if compati
 When migrating an existing AWS deployment, inventory live resources, back up and validate data, test the new host, cut over DNS/webhooks and retain a rollback window. Decommission old infrastructure only after explicit operational review; historical cleanup commands are not migration instructions.
 
 Reference: [Docker's production Compose guidance](https://docs.docker.com/compose/how-tos/production/).
+
+The [release candidate workflow](release-candidates.md) now covers versioned image and firmware packaging. Continue with the hosting, migration and operational steps above before deployment.
