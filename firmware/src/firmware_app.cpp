@@ -16,6 +16,10 @@
 #include "../include/config.example.h"
 #endif
 
+#ifndef LOCKER_FIRMWARE_VERSION
+#define LOCKER_FIRMWARE_VERSION "locker-firmware-0.2"
+#endif
+
 namespace locker::firmware {
 constexpr int OUTPUT_PIN = 26;
 constexpr int DOOR_PIN = 27;
@@ -253,7 +257,7 @@ void heartbeat() {
   cJSON_AddStringToObject(
     b,
     "firmwareVersion",
-    "locker-firmware-0.2"
+    LOCKER_FIRMWARE_VERSION
   );
 
   cJSON_AddBoolToObject(
