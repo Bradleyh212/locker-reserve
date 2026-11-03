@@ -28,9 +28,11 @@
   margin: 18px 0;
   padding: 14px 16px;
   border-radius: 8px;
-  background: var(--primary-soft);
+  background: var(--warning-soft);
 }
-.blocked { background: var(--warning-soft); color: var(--warning); }
+.panel summary, .blocked { color: var(--warning); }
+.panel button { background: var(--warning); color: var(--surface); }
+.panel button:hover { background: var(--warning); filter: brightness(0.95); }
 .blocked p { margin-top: 4px; font-size: .9rem; }
 .device summary { cursor: pointer; font-weight: 650; }
 .device summary:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
@@ -47,3 +49,5 @@
   .fields { grid-template-columns: 1fr; }
   .preview { display: block; margin-inline-start: 0; }
 }
+
+.fields { align-items: start; }

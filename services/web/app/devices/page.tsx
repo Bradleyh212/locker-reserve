@@ -42,6 +42,48 @@ type Device = {
     completedAt: string | null;
   }[];
 };
+function PulseFields({ device }: { device: Device }) {
+  const maxSeconds = Math.min(device.unlock.maxPulseMs, 5000) / 1000;
+  const storageKey = `locker-pulse-seconds:${device.id}`;
+  const [seconds, setSeconds] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem(storageKey);
+      if (saved && Number(saved) > 0 && Number(saved) <= maxSeconds) return saved;
+    } catch { /* Storage may be unavailable in private browsing. */ }
+    return String(Math.min(0.5, maxSeconds));
+  });
+  const [reason, setReason] = useState("");
+  return (
+    <>
+      <div className={styles.fields}>
+        <label className="field">Pulse duration (seconds)
+          <input name="seconds" type="number" min="0.001" step="0.001" max={maxSeconds}
+            value={seconds} required onChange={(event) => {
+              const input = event.currentTarget;
+              setSeconds(input.value);
+              if (input.validity.valid) {
+                try { sessionStorage.setItem(storageKey, input.value); } catch { /* Optional preference. */ }
+              }
+            }} />
+          <small>Maximum {maxSeconds} s</small>
+        </label>
+        <label className="field">Reason
+          <select name="reason" required value={reason} onChange={(event) => setReason(event.target.value)}>
+            <option value="" disabled>Choose a reason</option>
+            <option>Bench test</option>
+            <option>Maintenance</option>
+            <option>Other</option>
+          </select>
+        </label>
+      </div>
+      {reason === "Other" && <label className="field">Describe the reason
+        <input name="otherReason" required minLength={3} maxLength={200} placeholder="Saved in command history" />
+      </label>}
+      <label className={styles.confirm}><input name="confirmed" type="checkbox" required /> I can see the mechanism and it’s clear to move.</label>
+    </>
+  );
+}
+
 export default function DevicesPage() {
   const [devices, setDevices] = useState<Device[] | null>(null);
   const [error, setError] = useState("");
@@ -68,16 +110,16 @@ export default function DevicesPage() {
   async function pulse(d: Device, form: HTMLFormElement) {
     if (busy || !d.unlock.allowed || connectionError) return;
     const fields = new FormData(form);
-    const pulseMs = Number(fields.get("pulseMs"));
+    const pulseMs = Math.round(Number(fields.get("seconds")) * 1000);
     if (
       !Number.isInteger(pulseMs) ||
       pulseMs <= 0 ||
-      pulseMs > d.unlock.maxPulseMs
+      pulseMs > Math.min(5000, d.unlock.maxPulseMs)
     ) {
       setError("Invalid pulse duration");
       return;
     }
-    const reason = String(fields.get("reason") ?? "").trim();
+    const reason = String(fields.get(fields.get("reason") === "Other" ? "otherReason" : "reason") ?? "").trim();
     if (reason.trim().length < 3 || reason.length > 200) {
       setError("Enter an audit reason between 3 and 200 characters.");
       return;
@@ -162,15 +204,7 @@ export default function DevicesPage() {
                     <form onSubmit={(event) => { event.preventDefault(); void pulse(d, event.currentTarget); }}>
                       <fieldset disabled={busy} className={styles.controls}>
                         <legend className="sr-only">Supervised unlock test for {d.locker.code}</legend>
-                        <div className={styles.fields}>
-                          <label className="field">Pulse duration (ms)
-                            <input name="pulseMs" type="number" min="1" max={d.unlock.maxPulseMs} step="1" placeholder={`1–${d.unlock.maxPulseMs}`} required />
-                          </label>
-                          <label className="field">Reason for test
-                            <input name="reason" type="text" minLength={3} maxLength={200} placeholder="Saved in command history" required />
-                          </label>
-                        </div>
-                        <label className={styles.confirm}><input name="confirmed" type="checkbox" required /> I am supervising this test and the mechanism is clear.</label>
+                        <PulseFields device={d} />
                         <button type="submit" className="button button-primary">{busy ? "Sending…" : `Send unlock pulse to ${d.locker.code}`}</button>
                       </fieldset>
                     </form>
