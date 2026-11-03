@@ -218,13 +218,13 @@ export default function DevicesPage() {
 
                 <details className={styles.history}>
                   <summary>Recent activity <span className={styles.preview}>{latest ? `Latest: ${statusLabels[latest.status] ?? readable(latest.status)}` : "No commands yet"}</span></summary>
+                  {latest && <p className={styles.caption}>A completed pulse means the device finished driving the solenoid. There is no sensor on the latch to confirm it released.</p>}
                   {latest ? <ol className={styles.entries}>
                     {d.commands.map((c) => (
                       <li key={c.id}>
                         <div className={styles.row}><strong>{statusLabels[c.status] ?? readable(c.status)}</strong><time dateTime={c.issuedAt}>{formatDateTime(c.issuedAt)}</time></div>
-                        <p>{c.pulseMs} ms · {c.reason}</p>
+                        <p>{c.pulseMs / 1000} s · {c.reason}</p>
                         {c.resultReason && <p>Device report: <code>{c.resultReason}</code></p>}
-                        {c.status === "OUTPUT_PULSE_COMPLETED" && <p>Physical unlock unconfirmed.</p>}
                         {c.status === "EXPIRED_UNKNOWN" && <p>No result received. The pulse may have occurred.</p>}
                       </li>
                     ))}
