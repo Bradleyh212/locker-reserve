@@ -15,6 +15,15 @@ export const COMMAND_TTL_MS = 10000;
 export const COOLDOWN_MS = 30000;
 const outcomes = ['OUTPUT_PULSE_COMPLETED', 'REJECTED', 'FAILED', 'UNKNOWN'];
 
+// Count bench rest time from the server's receipt of the device result.
+function cooldownEnd(command: { issuedAt: Date; completedAt?: Date | null }) {
+  if (process.env.NODE_ENV !== 'production' &&
+      process.env.DEVICE_BENCH_SHORT_COOLDOWN === '1' && command.completedAt) {
+    return command.completedAt.getTime() + 5000;
+  }
+  return command.issuedAt.getTime() + COOLDOWN_MS;
+}
+
 @Injectable()
 export class DevicesService {
   constructor(private readonly db: PrismaService) {}
@@ -58,7 +67,7 @@ export class DevicesService {
       const online = !!d.lastSeen && now - d.lastSeen.getTime() < ONLINE_MS;
       const latest = d.commands[0];
       const cooldownUntil = latest
-        ? latest.issuedAt.getTime() + COOLDOWN_MS
+        ? cooldownEnd(latest)
         : 0;
       const blockedReason = !d.enabled
         ? 'Device disabled'
@@ -176,7 +185,7 @@ export class DevicesService {
       });
       if (
         recent &&
-        (Date.now() - recent.issuedAt.getTime() < COOLDOWN_MS ||
+        (Date.now() < cooldownEnd(recent) ||
           !recent.result ||
           recent.result === 'UNKNOWN')
       ) {
