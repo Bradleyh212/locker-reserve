@@ -53,13 +53,14 @@ export class PaymentsService {
 		const pricePerHour = 500
 		const amount = Math.max(1, Math.round(durationHours * pricePerHour))
 
-		return this.stripe.paymentIntents.create({
-			amount,
-			currency: 'cad',
-			metadata: {
-				reservationId,
+		return this.stripe.paymentIntents.create(
+			{
+				amount,
+				currency: 'cad',
+				metadata: { reservationId },
 			},
-		})
+			{ idempotencyKey: `reservation:${reservationId}` },
+		)
 	}
 
 	async handleWebhook(rawBody: Buffer | undefined, signature: string) {
@@ -91,54 +92,40 @@ export class PaymentsService {
 			)
 		}
 
-		const existingEvent = await this.prisma.paymentEvent.findUnique({
-			where: {
-				stripeEventId: event.id,
-			},
-		})
-
-		if (existingEvent) {
-			return { received: true, duplicate: true }
-		}
-
-		await this.prisma.paymentEvent.create({
-			data: {
-				stripeEventId: event.id,
-			},
-		})
-
-		if (event.type === 'payment_intent.succeeded') {
-			const paymentIntent = event.data.object as any
-			const reservationId = paymentIntent.metadata?.reservationId
-
+		// Deduplication and the state transition commit together. A failed handler
+		// must not consume the event and prevent Stripe's retry from processing it.
+		const outcome = await this.prisma.$transaction(async (tx) => {
+			const inserted = await tx.paymentEvent.createMany({
+				data: [{ stripeEventId: event.id }],
+				skipDuplicates: true,
+			})
+			if (!inserted.count) return { duplicate: true, changed: false }
+			if (event.type !== 'payment_intent.succeeded') {
+				return { duplicate: false, changed: false }
+			}
+			const reservationId = event.data.object.metadata?.reservationId
 			if (!reservationId) {
 				throw new BadRequestException('Missing reservationId metadata')
 			}
-
-			const reservation = await this.prisma.reservation.findUnique({
+			const reservation = await tx.reservation.findUnique({
+				where: { id: reservationId },
+			})
+			if (!reservation) throw new NotFoundException('Reservation not found')
+			const changed = await tx.reservation.updateMany({
 				where: {
 					id: reservationId,
+					status: ReservationStatus.HOLD,
+					expiresAt: { gt: new Date() },
 				},
+				data: { status: ReservationStatus.CONFIRMED },
 			})
-
-			if (!reservation) {
-				throw new NotFoundException('Reservation not found')
-			}
-
-			if (reservation.status === ReservationStatus.HOLD) {
-				await this.prisma.reservation.update({
-					where: {
-						id: reservationId,
-					},
-					data: {
-						status: ReservationStatus.CONFIRMED,
-					},
-				})
-
-				await this.cache.deleteByPattern(LOCKERS_AVAILABILITY_CACHE_PATTERN)
-			}
+			return { duplicate: false, changed: changed.count > 0 }
+		})
+		if (outcome.changed) {
+			await this.cache.deleteByPattern(LOCKERS_AVAILABILITY_CACHE_PATTERN)
 		}
-
-		return { received: true }
+		return outcome.duplicate
+			? { received: true, duplicate: true }
+			: { received: true }
 	}
 }

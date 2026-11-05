@@ -33,58 +33,62 @@ export class ReservationsService {
 			throw new BadRequestException('endTime must be after startTime')
 		}
 
-		const locker = await this.prisma.locker.findUnique({
-			where: { id: dto.lockerId },
-		})
+		// Serialize the overlap check and insertion across all API processes.
+		const reservation = await this.prisma.$transaction(async (tx) => {
+			await tx.$queryRaw`SELECT "id" FROM "Locker" WHERE "id" = ${dto.lockerId} FOR UPDATE`
+			const locker = await tx.locker.findUnique({
+				where: { id: dto.lockerId },
+			})
 
-		if (!locker) {
-			throw new NotFoundException(`Locker ${dto.lockerId} not found`)
-		}
+			if (!locker) {
+				throw new NotFoundException(`Locker ${dto.lockerId} not found`)
+			}
 
-		if (!locker.isActive) {
-			throw new BadRequestException('Locker is inactive')
-		}
+			if (!locker.isActive) {
+				throw new BadRequestException('Locker is inactive')
+			}
 
-		const now = new Date()
+			const now = new Date()
 
-		const overlapping = await this.prisma.reservation.findFirst({
-			where: {
-				lockerId: dto.lockerId,
-				AND: [
-					{
-						OR: [
-							{ status: ReservationStatus.CONFIRMED },
-							{
-								status: ReservationStatus.HOLD,
-								expiresAt: { gt: now },
-							},
-						],
-					},
-					{ startTime: { lt: end } },
-					{ endTime: { gt: start } },
-				],
-			},
-		})
+			const overlapping = await tx.reservation.findFirst({
+				where: {
+					lockerId: dto.lockerId,
+					AND: [
+						{
+							OR: [
+								{ status: ReservationStatus.CONFIRMED },
+								{
+									status: ReservationStatus.HOLD,
+									expiresAt: { gt: now },
+								},
+							],
+						},
+						{ startTime: { lt: end } },
+						{ endTime: { gt: start } },
+					],
+				},
+			})
 
-		if (overlapping) {
-			throw new BadRequestException(
-				'Locker is already reserved for that time range',
-			)
-		}
+			if (overlapping) {
+				throw new BadRequestException(
+					'Locker is already reserved for that time range',
+				)
+			}
 
-		const expiresAt = new Date(Date.now() + 10 * 60 * 1000)
+			const expiresAt = new Date(Date.now() + 10 * 60 * 1000)
 
-		const reservation = await this.prisma.reservation.create({
-			data: {
-				lockerId: dto.lockerId,
-				startTime: start,
-				endTime: end,
-				expiresAt,
-				status: ReservationStatus.HOLD,
-			},
-			include: {
-				locker: true,
-			},
+			return tx.reservation.create({
+				data: {
+					lockerId: dto.lockerId,
+					startTime: start,
+					endTime: end,
+					expiresAt,
+					status: ReservationStatus.HOLD,
+				},
+				include: {
+					locker: true,
+				},
+			})
 		})
 
 		await this.invalidateAvailabilityCache()
@@ -116,11 +120,20 @@ export class ReservationsService {
 			throw new BadRequestException('Hold has expired')
 		}
 
-		const updated = await this.prisma.reservation.update({
-			where: { id },
-			data: {
-				status: ReservationStatus.CONFIRMED,
+		// Compare-and-set: a concurrent cancellation/expiration must not be overwritten.
+		const changed = await this.prisma.reservation.updateMany({
+			where: {
+				id,
+				status: ReservationStatus.HOLD,
+				expiresAt: { gt: new Date() },
 			},
+			data: { status: ReservationStatus.CONFIRMED },
+		})
+		if (!changed.count) {
+			throw new BadRequestException('Hold is no longer confirmable')
+		}
+		const updated = await this.prisma.reservation.findUniqueOrThrow({
+			where: { id },
 		})
 
 		await this.invalidateAvailabilityCache()
