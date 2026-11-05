@@ -172,6 +172,26 @@ describe('device command boundaries', () => {
       service.enqueue('d', { pulseMs: 100, reason: 'bench' }, 'admin'),
     ).rejects.toThrow();
   });
+  it('waits five full seconds after the completion report in supervised bench mode', async () => {
+    jest.useFakeTimers();
+    process.env.DEVICE_BENCH_SHORT_COOLDOWN = '1';
+    try {
+      ready();
+      const command = { issuedAt: new Date(Date.now() - 10000), completedAt: new Date(),
+        result: 'OUTPUT_PULSE_COMPLETED' };
+      const d = await db.lockerDevice.findUnique();
+      db.lockerDevice.findMany.mockResolvedValue([{ ...d, commands: [command] }]);
+      db.deviceCommand.findFirst.mockResolvedValue(command);
+      jest.advanceTimersByTime(4999);
+      expect((await service.list())[0].unlock.allowed).toBe(false);
+      await expect(service.enqueue('d', { pulseMs: 100, reason: 'bench' }, 'admin')).rejects.toThrow();
+      jest.advanceTimersByTime(1);
+      expect((await service.list())[0].unlock.allowed).toBe(true);
+    } finally {
+      delete process.env.DEVICE_BENCH_SHORT_COOLDOWN;
+      jest.useRealTimers();
+    }
+  });
   it('blocks unresolved commands even after their expiry', async () => {
     ready();
     db.deviceCommand.findFirst.mockResolvedValue({
