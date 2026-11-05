@@ -373,4 +373,55 @@ suite('device HTTP + PostgreSQL integration', () => {
       }),
     ).toBe(1);
   }, 10000);
+  it('serializes reboot, expiry and result reporting without lock inversion', async () => {
+    const http = app.getHttpServer(),
+      auth = 'Bearer ' + token;
+    for (let i = 0; i < 5; i++) {
+      const c = await db.deviceCommand.create({
+        data: {
+          deviceId,
+          lockerId,
+          requestedBy: 'test',
+          reason: 'simulated concurrency',
+          pulseMs: 100,
+          expiresAt: new Date(Date.now() - 1),
+        },
+      });
+      const [heartbeat, result] = await Promise.all([
+        request(http)
+          .post('/v1/device/heartbeat')
+          .set('Authorization', auth)
+          .send({
+            doorState: 'CLOSED',
+            outputState: 'INACTIVE',
+            firmwareVersion: 'simulated',
+            actuationEnabled: true,
+            maxPulseMs: 5000,
+            diagnostics: {
+              bootId: String(i + 1).repeat(32),
+              uptimeMs: 100,
+              resetReason: 'SW',
+              wifiDisconnects: 0,
+              communicationFailures: 0,
+            },
+          }),
+        request(http)
+          .post(`/v1/device/commands/${c.id}/result`)
+          .set('Authorization', auth)
+          .send({ result: 'UNKNOWN', reason: 'SIMULATED_INTERRUPTION' }),
+        new DeviceReliabilityService(db).sweep(),
+      ]);
+      expect(heartbeat.status).toBe(200);
+      expect(result.status).toBe(200);
+      expect(
+        (await db.deviceCommand.findUniqueOrThrow({ where: { id: c.id } }))
+          .result,
+      ).toBe('UNKNOWN');
+      expect(
+        await db.deviceEvent.count({
+          where: { commandId: c.id, type: 'COMMAND_OUTCOME_UNKNOWN' },
+        }),
+      ).toBe(1);
+    }
+  }, 30000);
 });

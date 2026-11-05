@@ -293,6 +293,8 @@ export class DevicesService {
     )
       throw new BadRequestException('Invalid result');
     return this.db.$transaction(async (tx) => {
+      // Match heartbeat/delivery lock order. Event foreign keys also lock the device.
+      await tx.$queryRaw`SELECT "id" FROM "LockerDevice" WHERE "id" = ${id} FOR UPDATE`;
       await tx.$queryRaw`SELECT "id" FROM "DeviceCommand" WHERE "id" = ${commandId} FOR UPDATE`;
       const c = await tx.deviceCommand.findUnique({ where: { id: commandId } });
       if (!c || c.deviceId !== id) throw new NotFoundException();

@@ -253,11 +253,13 @@ export class DeviceReliabilityService {
           expiresAt: { lte: new Date() },
         },
         select: { id: true, deviceId: true },
-        orderBy: { expiresAt: 'desc' },
+        orderBy: { expiresAt: 'asc' },
         take: 100,
       });
       for (const c of expired)
         await this.db.$transaction(async (tx) => {
+          // Use the same device -> command order as heartbeat, delivery and results.
+          await tx.$queryRaw`SELECT "id" FROM "LockerDevice" WHERE "id" = ${c.deviceId} FOR UPDATE`;
           await tx.$queryRaw`SELECT "id" FROM "DeviceCommand" WHERE "id" = ${c.id} FOR UPDATE`;
           const current = await tx.deviceCommand.findUnique({
             where: { id: c.id },

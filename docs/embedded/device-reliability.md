@@ -69,7 +69,7 @@ Events include server timestamp, severity, device ID where known, optional comma
 
 ## Command safety
 
-Heartbeat, enqueue and delivery share a per-device row lock. On observing a new boot, outstanding commands are expired before the new heartbeat is accepted, including the first diagnostic boot. They are never converted to successful/rejected outcomes by inference. Result and expiry handling also use command locks.
+Heartbeat, enqueue and delivery share a per-device row lock. On observing a new boot, outstanding commands are expired before the new heartbeat is accepted, including the first diagnostic boot. They are never converted to successful/rejected outcomes by inference. Result and expiry handling lock the device first and then the command, matching heartbeat/delivery lock order and avoiding deadlocks during concurrent recovery. Expiry sweeps process the oldest unobserved deadlines first.
 
 Updated firmware waits for an accepted heartbeat before polling for new commands at boot or after a Wi-Fi disconnect. Its existing NVS journal still persists consumption before GPIO activation, prevents physical re-execution on duplicate command delivery and reports UNKNOWN if interrupted. Pending journal results can still be submitted. A late result can resolve an expired command, but a conflicting final result is rejected. UNKNOWN and pending commands continue blocking new unlocks; no automatic retry/reconciliation is added.
 
