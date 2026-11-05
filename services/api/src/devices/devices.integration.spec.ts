@@ -4,6 +4,8 @@ import { INestApplication } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthModule } from '../auth/auth.module';
+import { ScheduleModule, SchedulerRegistry } from '@nestjs/schedule';
+import { DeviceReliabilityService } from './device-reliability.service';
 import { DevicesModule } from './devices.module';
 import { createHash, randomBytes, randomUUID } from 'crypto';
 import request = require('supertest');
@@ -22,7 +24,7 @@ suite('device HTTP + PostgreSQL integration', () => {
   beforeAll(async () => {
     process.env.DEVICE_MAX_PULSE_MS = '5000';
     const m = await Test.createTestingModule({
-      imports: [AuthModule, DevicesModule],
+      imports: [ScheduleModule.forRoot(), AuthModule, DevicesModule],
     }).compile();
     app = m.createNestApplication();
     await app.init();
@@ -197,4 +199,178 @@ suite('device HTTP + PostgreSQL integration', () => {
       .set('Authorization', auth)
       .expect(401);
   }, 30000);
+  it('persists transitions across service instances and rejects stale/rebooted unlocks', async () => {
+    const http = app.getHttpServer(),
+      auth = 'Bearer ' + token;
+    await db.lockerDevice.update({
+      where: { id: deviceId },
+      data: { enabled: true },
+    });
+    await db.deviceCommand.deleteMany({ where: { deviceId } });
+    const diagnostics = {
+      bootId: 'a'.repeat(32),
+      uptimeMs: 1000,
+      resetReason: 'POWERON',
+      wifiDisconnects: 0,
+      communicationFailures: 0,
+    };
+    const heartbeat = () =>
+      request(http)
+        .post('/v1/device/heartbeat')
+        .set('Authorization', auth)
+        .send({
+          doorState: 'CLOSED',
+          outputState: 'INACTIVE',
+          firmwareVersion: 'simulated',
+          actuationEnabled: true,
+          maxPulseMs: 5000,
+          diagnostics,
+        });
+    await heartbeat().expect(200);
+    const originalSeen = (
+      await db.lockerDevice.findUniqueOrThrow({ where: { id: deviceId } })
+    ).lastSeen;
+    await Promise.all([heartbeat().expect(200), heartbeat().expect(200)]);
+    expect(
+      (await db.lockerDevice.findUniqueOrThrow({ where: { id: deviceId } }))
+        .lastSeen,
+    ).toEqual(originalSeen);
+    expect(
+      await db.deviceEvent.count({
+        where: { deviceId, type: 'DEVICE_BOOT_OBSERVED' },
+      }),
+    ).toBe(1);
+    const old = new Date(Date.now() - 20000);
+    await db.lockerDevice.update({
+      where: { id: deviceId },
+      data: { lastSeen: old },
+    });
+    await Promise.all([
+      new DeviceReliabilityService(db).sweep(),
+      new DeviceReliabilityService(db).sweep(),
+    ]);
+    expect(
+      await db.deviceEvent.count({
+        where: {
+          deviceId,
+          type: 'HEARTBEAT_STALE',
+          dedupeKey: `${deviceId}:offline:${old.toISOString()}`,
+        },
+      }),
+    ).toBe(1);
+    await request(http)
+      .post(`/v1/admin/devices/${deviceId}/unlock-requests`)
+      .set('Cookie', cookie)
+      .send({ pulseMs: 5000, reason: 'stale state' })
+      .expect(409);
+    diagnostics.uptimeMs += 1000;
+    diagnostics.communicationFailures = 2;
+    diagnostics.wifiDisconnects = 1;
+    await heartbeat().expect(200);
+    const queued = await request(http)
+      .post(`/v1/admin/devices/${deviceId}/unlock-requests`)
+      .set('Cookie', cookie)
+      .send({ pulseMs: 5000, reason: 'simulated reboot test' })
+      .expect(202);
+    const commandId = queued.body.commandId;
+    diagnostics.bootId = 'b'.repeat(32);
+    diagnostics.uptimeMs = 100;
+    diagnostics.resetReason = 'BROWNOUT';
+    diagnostics.communicationFailures = 0;
+    diagnostics.wifiDisconnects = 0;
+    await heartbeat().expect(200);
+    await request(http)
+      .get('/v1/device/commands/next')
+      .set('Authorization', auth)
+      .expect(204);
+    await request(http)
+      .post(`/v1/admin/devices/${deviceId}/unlock-requests`)
+      .set('Cookie', cookie)
+      .send({ pulseMs: 100, reason: 'must not replace unresolved' })
+      .expect(409);
+    const command = await db.deviceCommand.findUniqueOrThrow({
+      where: { id: commandId },
+    });
+    expect(command.result).toBeNull();
+    expect(command.expiresAt.getTime()).toBeLessThanOrEqual(Date.now());
+    await new DeviceReliabilityService(db).sweep();
+    await new DeviceReliabilityService(db).sweep();
+    expect(
+      await db.deviceEvent.count({
+        where: { deviceId, type: 'COMMAND_EXPIRED_UNKNOWN', commandId },
+      }),
+    ).toBe(1);
+    // The device's persisted journal can still supply a late result without any reactivation.
+    await request(http)
+      .post(`/v1/device/commands/${commandId}/result`)
+      .set('Authorization', auth)
+      .send({ result: 'UNKNOWN', reason: 'INTERRUPTED_OR_NOT_STARTED' })
+      .expect(200);
+    await request(http)
+      .post(`/v1/device/commands/${commandId}/result`)
+      .set('Authorization', auth)
+      .send({ result: 'UNKNOWN', reason: 'INTERRUPTED_OR_NOT_STARTED' })
+      .expect(200);
+    await request(http)
+      .get(`/v1/admin/devices/${deviceId}/reliability`)
+      .expect(401);
+    const history = await request(http)
+      .get(`/v1/admin/devices/${deviceId}/reliability`)
+      .set('Cookie', cookie)
+      .expect(200);
+    const types = history.body.events.map((e: any) => e.type);
+    for (const type of [
+      'DEVICE_RESTART_DETECTED',
+      'BROWNOUT_REPORTED',
+      'DEVICE_RECONNECTED',
+      'REBOOT_WITH_UNRESOLVED_COMMAND',
+      'COMMAND_OUTCOME_UNKNOWN',
+      'COMMUNICATION_FAILURE_REPORTED',
+    ])
+      expect(types).toContain(type);
+    expect(JSON.stringify(history.body)).not.toContain(token);
+    expect(history.body.health.bootId).toBe('b'.repeat(32));
+    // Delayed report from a retired boot cannot restore an old CLOSED observation.
+    const seen = (
+      await db.lockerDevice.findUniqueOrThrow({ where: { id: deviceId } })
+    ).lastSeen;
+    diagnostics.bootId = 'a'.repeat(32);
+    diagnostics.uptimeMs = 9000;
+    const ignored = await heartbeat().expect(200);
+    expect(ignored.body.ignored).toBe(true);
+    expect(
+      (await db.lockerDevice.findUniqueOrThrow({ where: { id: deviceId } }))
+        .lastSeen,
+    ).toEqual(seen);
+  }, 30000);
+  it('registers background detection and observes a silent device without requests', async () => {
+    expect(app.get(SchedulerRegistry).getIntervals().length).toBeGreaterThan(0);
+    const stale = new Date(Date.now() - 60000);
+    await db.lockerDevice.update({
+      where: { id: deviceId },
+      data: { lastSeen: stale },
+    });
+    await db.deviceHealth.update({
+      where: { deviceId },
+      data: { offline: false },
+    });
+    const deadline = Date.now() + 8000;
+    let observed = false;
+    while (Date.now() < deadline) {
+      const health = await db.deviceHealth.findUniqueOrThrow({
+        where: { deviceId },
+      });
+      if (health.offline) {
+        observed = true;
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    expect(observed).toBe(true);
+    expect(
+      await db.deviceEvent.count({
+        where: { dedupeKey: `${deviceId}:offline:${stale.toISOString()}` },
+      }),
+    ).toBe(1);
+  }, 10000);
 });

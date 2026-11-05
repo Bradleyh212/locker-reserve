@@ -63,6 +63,8 @@ model LockerDevice {
   actuationEnabled Boolean @default(false)
   maxPulseMs Int @default(0)
   commands DeviceCommand[]
+  health DeviceHealth?
+  events DeviceEvent[]
 }
 
 model DeviceCommand {
@@ -78,5 +80,38 @@ model DeviceCommand {
   result String?
   resultReason String?
   completedAt DateTime?
+  deliveredAt DateTime?
+  expiryObservedAt DateTime?
   @@index([deviceId, issuedAt])
+}
+
+// Latest authenticated diagnostics; device uptime is not wall-clock time.
+model DeviceHealth {
+  deviceId String @id
+  device LockerDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  offline Boolean @default(false)
+  bootId String?
+  uptimeMs Float?
+  resetReason String?
+  bootObservedAt DateTime?
+  wifiDisconnects Int @default(0)
+  communicationFailures Int @default(0)
+  updatedAt DateTime @updatedAt
+}
+
+model DeviceEvent {
+  id String @id @default(uuid())
+  deviceId String?
+  device LockerDevice? @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  type String
+  severity String
+  timestamp DateTime @default(now())
+  commandId String?
+  uptimeMs Float?
+  resetReason String?
+  details Json?
+  dedupeKey String @unique
+  occurrences Int @default(1)
+  @@index([deviceId, timestamp, id])
+  @@index([timestamp])
 }

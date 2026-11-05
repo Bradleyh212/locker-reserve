@@ -19,7 +19,11 @@ describe('device command boundaries', () => {
       $queryRaw: jest.fn(),
     };
     db.$transaction = async (fn: any) => fn(db);
-    service = new DevicesService(db);
+    service = new DevicesService(db, {
+      authenticationFailure: jest.fn(),
+      event: jest.fn(),
+      heartbeat: jest.fn().mockResolvedValue(true),
+    } as any);
     process.env.DEVICE_MAX_PULSE_MS = '200';
   });
   afterEach(() => delete process.env.DEVICE_MAX_PULSE_MS);
