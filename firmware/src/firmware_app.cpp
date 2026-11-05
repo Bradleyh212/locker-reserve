@@ -5,6 +5,9 @@
 #include <Preferences.h>
 #include <cJSON.h>
 #include <time.h>
+#include <esp_system.h>
+#include <esp_timer.h>
+#include "../include/device_diagnostics.h"
 #include "../include/locker.h"
 #include "../include/device_protocol.h"
 #include "../include/door_sensor.h"
@@ -41,6 +44,23 @@ GpioOutput output;
 locker::Locker* actuator = nullptr;
 
 Preferences prefs;
+locker::DeviceDiagnostics diagnostics;
+char bootId[33] = {};
+const char* resetReason() {
+  switch (esp_reset_reason()) {
+    case ESP_RST_POWERON: return "POWERON";
+    case ESP_RST_EXT: return "EXT";
+    case ESP_RST_SW: return "SW";
+    case ESP_RST_PANIC: return "PANIC";
+    case ESP_RST_INT_WDT: return "INT_WDT";
+    case ESP_RST_TASK_WDT: return "TASK_WDT";
+    case ESP_RST_WDT: return "WDT";
+    case ESP_RST_DEEPSLEEP: return "DEEPSLEEP";
+    case ESP_RST_BROWNOUT: return "BROWNOUT";
+    case ESP_RST_SDIO: return "SDIO";
+    default: return "UNKNOWN";
+  }
+}
 
 bool storageReady = false;
 
@@ -163,12 +183,12 @@ int request(
 
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println("HTTP skipped: WiFi not connected");
-    return -1;
+    return diagnostics.observeHttp(-1);
   }
 
   if (time(nullptr) < 1767225600) {
     Serial.println("HTTP skipped: system time not synchronized");
-    return -1;
+    return diagnostics.observeHttp(-1);
   }
 
   WiFiClientSecure client;
@@ -185,7 +205,7 @@ int request(
 
   if (!String(API_BASE_URL).startsWith("https://")) {
     Serial.println("HTTP error: API_BASE_URL is not HTTPS");
-    return -1;
+    return diagnostics.observeHttp(-1);
   }
 
   Serial.print("Request: ");
@@ -193,7 +213,7 @@ int request(
 
   if (!http.begin(client, url)) {
     Serial.println("HTTP begin() failed");
-    return -1;
+    return diagnostics.observeHttp(-1);
   }
 
   http.addHeader(
@@ -224,7 +244,7 @@ int request(
 
   http.end();
 
-  return code;
+  return diagnostics.observeHttp(code);
 }
 
 
@@ -268,6 +288,13 @@ void heartbeat() {
     MAX_PULSE_MS
   );
 
+  cJSON* health = cJSON_AddObjectToObject(b, "diagnostics");
+  cJSON_AddStringToObject(health, "bootId", bootId);
+  cJSON_AddNumberToObject(health, "uptimeMs", static_cast<double>(esp_timer_get_time() / 1000));
+  cJSON_AddStringToObject(health, "resetReason", resetReason());
+  cJSON_AddNumberToObject(health, "wifiDisconnects", diagnostics.wifiDisconnects);
+  cJSON_AddNumberToObject(health, "communicationFailures", diagnostics.communicationFailures);
+
   String response;
 
   int code = request(
@@ -275,6 +302,12 @@ void heartbeat() {
     jsonString(b),
     response
   );
+
+  cJSON* ack = cJSON_Parse(response.c_str());
+  diagnostics.heartbeatAccepted = code == 200 && ack &&
+    cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(ack, "accepted")) &&
+    !cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(ack, "ignored"));
+  cJSON_Delete(ack);
 
   Serial.printf(
     "Heartbeat HTTP %d; contact %s; output inactive\n",
@@ -502,6 +535,9 @@ void begin() {
   pinMode(OUTPUT_PIN, OUTPUT);
 
   Serial.begin(115200);
+  // Random boot session ID, independent of wall clock and OTA/command NVS namespaces.
+  for (int i = 0; i < 4; ++i) snprintf(bootId + i * 8, 9, "%08lx", static_cast<unsigned long>(esp_random()));
+  Serial.printf("Boot %s; reset reason %s\n", bootId, resetReason());
 
   delay(500);
 
@@ -828,6 +864,7 @@ void begin() {
 // --------------------------------------------------
 
 void run() {
+  diagnostics.observeWifi(WiFi.status() == WL_CONNECTED);
 
   readSensor();
 
@@ -960,7 +997,7 @@ void run() {
       report();
     }
     else if (
-      storageReady
+      storageReady && diagnostics.heartbeatAccepted
     ) {
 
       poll();
