@@ -11,14 +11,14 @@ branch ruleset. This change does not modify branch protection automatically.
 
 | Required check | What it validates |
 | --- | --- |
-| `api` | npm lockfile install, Prisma generation and migrations, provisioning regression tests, unit/device HTTP/database tests, application e2e smoke tests, Nest TypeScript build |
+| `api` | npm lockfile install, Prisma generation and migrations, provisioning regression tests, unit/device HTTP/database tests, application e2e smoke tests, reservation lifecycle E2E tests, TypeScript including tests, Nest build |
 | `web` | npm lockfile install, existing ESLint command, TypeScript, normal production Next build |
 | `firmware` | C++17 host unit tests and simulator; ESP32 builds of main `src`, `device-check`, `usb-check`, `reed-check` |
 | `dev-tooling` | Shell/Python/Node syntax, six supervisor tests, fetch-timeout regression, local Compose syntax |
 
 API uses ephemeral PostgreSQL 16 and Redis 7 GitHub service containers with health
 checks, not local Compose. The e2e test checks both through `/health`, then closes
-Prisma/Nest resources. The web build requires no live API. Existing Google Fonts
+Prisma/Nest resources. The reservation suite uses a separate `locker_reservation_e2e` database and Redis database 15; see [its setup, coverage and scope gaps](testing/reservation-e2e.md). The web build requires no live API. Existing Google Fonts
 integration requires outbound network access during build.
 
 Node 24 matches the locally validated runtime (24.21.0) and supports the locked

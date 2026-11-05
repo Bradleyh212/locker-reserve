@@ -1,6 +1,6 @@
 # Locker Reserve API
 
-NestJS API for lockers, reservations, admin authentication, Stripe payments and optional Redis caching. Device control is [planned](../../docs/embedded/device-api.md), not implemented.
+NestJS API for lockers, reservations, admin authentication, Stripe payments and optional Redis caching. The [device API](../../docs/embedded/device-api.md) supports authenticated admin bench commands; customer reservation-authorized unlocking is not implemented.
 
 ## Local development
 
@@ -23,9 +23,11 @@ npm run start:dev
 - `/payments/create-intent`: guarded PaymentIntent creation.
 - `/payments/webhook`: public signature-verified Stripe webhook; preserve raw request body through a proxy.
 
-There is no global `/api` prefix. Hold expiration runs in the API scheduler; Redis is a cache, not a hold queue. See [requirements and known gaps](../../docs/requirements.md) for concurrency/payment limitations.
+There is no global `/api` prefix. Hold expiration runs in the API scheduler; Redis is a cache, not a hold queue. See [reservation lifecycle tests and remaining gaps](../../docs/testing/reservation-e2e.md) for concurrency, payment and access-control behavior.
 
 ## Verification
+
+For isolated reservation/payment/device lifecycle tests, run `sh scripts/test-reservation-e2e.sh` from the repository root. See [E2E test setup and scope](../../docs/testing/reservation-e2e.md). No live Stripe credentials, local API, or physical ESP32 are needed.
 
 From this directory: `npm test -- --runInBand` for unit tests, `npm run test:e2e` for end-to-end tests, and `npm run build` for compilation. Prepare any environment/services needed by the selected tests; this documentation update does not claim they were run.
 

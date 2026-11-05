@@ -1,0 +1,10 @@
+{
+  "moduleFileExtensions": ["js", "json", "ts"],
+  "rootDir": ".",
+  "testEnvironment": "node",
+  "testMatch": ["<rootDir>/reservation/**/*.spec.ts"],
+  "setupFiles": ["<rootDir>/reservation/setup.cjs"],
+  "transform": { "^.+\\.(t|j)s$": "ts-jest" },
+  "maxWorkers": 1,
+  "testTimeout": 20000
+}

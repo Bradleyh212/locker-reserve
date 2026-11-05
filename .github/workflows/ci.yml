@@ -65,6 +65,22 @@ jobs:
         run: npm test -- --ci --runInBand
       - name: Application HTTP smoke tests
         run: npm run test:e2e -- --ci --runInBand
+      - name: Create isolated reservation lifecycle database
+        run: >-
+          psql -h 127.0.0.1 -U ci -d locker_ci
+          -c 'CREATE DATABASE locker_reservation_e2e'
+        env:
+          PGPASSWORD: ci
+      - name: Reservation lifecycle migrations and E2E tests
+        run: |
+          npx --no-install prisma migrate deploy
+          npm run test:reservation -- --ci
+        env:
+          RESERVATION_E2E: '1'
+          DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/locker_reservation_e2e?schema=public
+          REDIS_URL: redis://127.0.0.1:6379/15
+      - name: TypeScript (including test sources)
+        run: npx --no-install tsc --noEmit
       - run: npm run build
 
   web:
