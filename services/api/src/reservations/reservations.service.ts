@@ -21,7 +21,7 @@ export class ReservationsService {
 		private cache: RedisCacheService,
 	) {}
 
-	async createHold(dto: CreateHoldDto) {
+	async createHold(dto: CreateHoldDto, accessTokenHash?: string) {
 		const start = new Date(dto.startTime)
 		const end = new Date(dto.endTime)
 
@@ -84,6 +84,7 @@ export class ReservationsService {
 					endTime: end,
 					expiresAt,
 					status: ReservationStatus.HOLD,
+					...(accessTokenHash && { access: { create: { tokenHash: accessTokenHash } } }),
 				},
 				include: {
 					locker: true,

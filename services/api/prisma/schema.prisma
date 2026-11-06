@@ -39,13 +39,28 @@ model Reservation {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  access CustomerReservationAccess?
+  commands DeviceCommand[]
+
   @@index([lockerId, startTime, endTime])
   @@index([status, expiresAt])
+}
+
+// Issued only with a new customer booking. Payment proof belongs to exactly one grant.
+model CustomerReservationAccess {
+  reservationId String @id
+  reservation Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  tokenHash String @unique
+  paymentIntentId String? @unique
+  paidAt DateTime?
+  revokedAt DateTime?
 }
 
 model PaymentEvent {
   id            String   @id @default(uuid())
   stripeEventId String   @unique
+  reversedIntentId String?
+  @@index([reversedIntentId])
   createdAt     DateTime @default(now())
 }
 
@@ -78,5 +93,9 @@ model DeviceCommand {
   result String?
   resultReason String?
   completedAt DateTime?
+  reservationId String?
+  reservation Reservation? @relation(fields: [reservationId], references: [id], onDelete: Restrict)
+  requestKey String?
+  @@unique([reservationId, requestKey])
   @@index([deviceId, issuedAt])
 }
