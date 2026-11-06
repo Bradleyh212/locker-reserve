@@ -121,10 +121,24 @@ export class DevicesService {
     ) {
       throw new BadRequestException('Invalid heartbeat');
     }
-    await this.db.lockerDevice.update({
-      where: { id },
+    const receivedAt = Date.now();
+    const sampled = b.observedAtMs;
+    const stamped = sampled !== undefined;
+    if (stamped && (!Number.isSafeInteger(sampled) || sampled > receivedAt + 2000 ||
+        sampled <= receivedAt - ONLINE_MS)) {
+      throw new BadRequestException('Door observation timestamp outside freshness window');
+    }
+    // Compare and write atomically. A late CLOSED or unversioned packet cannot
+    // overwrite a newer timestamped OPEN, even across API processes.
+    const observed = stamped ? new Date(sampled) : null;
+    const write = await this.db.lockerDevice.updateMany({
+      where: {
+        id, enabled: true,
+        OR: observed ? [{ doorObservedAt: null }, { doorObservedAt: { lt: observed } }] : [{ doorObservedAt: null }],
+      },
       data: {
-        lastSeen: new Date(),
+        doorObservedAt: observed,
+        lastSeen: new Date(stamped ? Math.min(receivedAt, sampled) : receivedAt),
         doorState: b.doorState,
         outputState: b.outputState,
         firmwareVersion: b.firmwareVersion,
@@ -132,7 +146,7 @@ export class DevicesService {
         maxPulseMs: b.maxPulseMs,
       },
     });
-    return { accepted: true };
+    return write.count ? { accepted: true } : { accepted: false, ignored: true };
   }
 
   async enqueue(id: string, b: any, actor: string) {

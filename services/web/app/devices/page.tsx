@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import RequireAdminAuth from "../components/RequireAdminAuth";
 import { apiUrl, authFetch } from "../lib/auth";
 import { formatDateTime } from "../lib/ui";
@@ -90,13 +90,20 @@ export default function DevicesPage() {
   const [notice, setNotice] = useState("");
   const [connectionError, setConnectionError] = useState("");
   const [busy, setBusy] = useState(false);
+  const requests = useRef({ issued: 0, applied: 0 });
   async function refresh() {
+    const sequence = ++requests.current.issued;
     try {
-      const r = await authFetch(apiUrl("/v1/admin/devices"));
+      const r = await authFetch(apiUrl("/v1/admin/devices"), { cache: "no-store" });
       if (!r.ok) throw new Error("Unable to load devices");
-      setDevices(await r.json());
+      const snapshot = await r.json();
+      if (sequence <= requests.current.applied) return;
+      requests.current.applied = sequence;
+      setDevices(snapshot);
       setConnectionError("");
     } catch (e) {
+      if (sequence <= requests.current.applied) return;
+      requests.current.applied = sequence;
       setConnectionError(e instanceof Error ? e.message : "Network error");
     }
   }
@@ -105,7 +112,8 @@ export default function DevicesPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void refresh();
     const t = setInterval(() => void refresh(), 3000);
-    return () => clearInterval(t);
+    const order = requests.current;
+    return () => { clearInterval(t); order.applied = order.issued; };
   }, []);
   async function pulse(d: Device, form: HTMLFormElement) {
     if (busy || !d.unlock.allowed || connectionError) return;
