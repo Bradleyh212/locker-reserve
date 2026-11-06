@@ -533,8 +533,7 @@ it('runs availability → hold → signed payment → admin-authorized simulated
   const payload = h.event(hold.body.id);
   await h.webhook(payload).expect(201);
   expect((await reservation(hold.body.id)).status).toBe('CONFIRMED');
-  // Actual contract: the admin cookie authorizes this bench action. There is no
-  // reservation ownership/payment authorization endpoint on main yet.
+  // The admin cookie authorizes this bench action independently of customer access.
   const queued = await h.unlock().expect(202);
   const delivered = await h.next().expect(200);
   expect(delivered.body).toMatchObject({

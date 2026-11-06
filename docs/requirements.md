@@ -24,7 +24,7 @@ These are implementation observations, not a claim that production acceptance te
 - Hold creation now serializes the overlap check/insertion with a locker row lock. Direct database writes still have no exclusion constraint and must not bypass this service.
 - Webhook event recording and conditional unexpired-HOLD confirmation now commit together. Payment reconciliation/refunds and a persistent payment ledger remain absent; do not claim exactly-once physical or payment-provider execution. See [E2E coverage](testing/reservation-e2e.md).
 - Admin confirmation checks hold expiry but does not verify payment. Define whether such reservations authorize access before adding hardware.
-- Public reservations have no customer owner/access credential. A reservation UUID is not proof of entitlement.
+- Legacy public reservations have no customer credential. New [customer bookings](embedded/customer-unlock.md) bind a credential and independently verified payment proof.
 - Redis is a cache, not the source of truth for holds or commands.
 
 These gaps need implementation and tests before unattended physical access.

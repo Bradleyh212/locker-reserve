@@ -1,6 +1,6 @@
 # Device API contract proposal (v1)
 
-Status: target contract. An admin-only bench subset now exists; see [local API bench](local-api-bench.md). Customer reservation unlock requests and production commissioning remain planned. Paths are internal NestJS routes; an HTTPS proxy may expose them under `/api`. Initial transport proposal is outbound HTTPS polling; see [ADR 0003](../adr/0003-device-transport.md).
+Status: target contract. An admin-only bench subset now exists; see [local API bench](local-api-bench.md). Customer access now uses the [reservation-authorized API](customer-unlock.md); production commissioning remains pending. Paths are internal NestJS routes; an HTTPS proxy may expose them under `/api`. Initial transport proposal is outbound HTTPS polling; see [ADR 0003](../adr/0003-device-transport.md).
 
 ## Identity and endpoints
 
@@ -8,7 +8,7 @@ Devices use `Authorization: Bearer <unique-device-secret>`, with server-side ver
 
 | Method and route (proposed) | Purpose |
 | --- | --- |
-| POST `/v1/reservations/:id/unlock-requests` | Customer-authorized request; returns 202 with a command ID, never a claim of physical success. |
+| POST `/v1/customer/reservations/:id/unlock-requests` | Customer-authorized request; returns 202 with a command ID, never a claim of physical success. |
 | GET `/v1/device/commands/next` | Return one still-authorized command for this device, or 204 if none. Delivery is retryable until a terminal result/expiry. |
 | POST `/v1/device/commands/:id/result` | Idempotent terminal result for this device's command. |
 | POST `/v1/device/heartbeat` | Firmware version, uptime, capabilities, output state and optional door state. |

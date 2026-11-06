@@ -93,20 +93,13 @@ tests still check `/health` against PostgreSQL and Redis separately.
   output completion scenario. Database reservation/event/command state and admin
   command history are asserted.
 
-## Important gaps: this is not customer access authorization
+## Customer access and the admin bench suite
 
-The current schema has no customer owner/access credential, no Payment entity,
-no persisted PaymentIntent-to-reservation link, and no reservation ID on a device
-command. `PaymentEvent` records the Stripe event ID; `CONFIRMED` can also be set by
-an admin without a payment. Therefore **CONFIRMED is not proof of payment**.
-
-The existing `/v1/admin/devices/:id/unlock-requests` route authorizes a supervised
-admin action. It does not check a customer's paid reservation, ownership or access
-window. A test explicitly records that an admin can request a bench pulse with no
-reservation. Customer unlock approval/rejection based on unpaid, cancelled,
-expired, wrong-owner or out-of-window reservations cannot be tested as implemented
-features: those contracts do not exist yet. They need a separate access-control
-feature and tests. This branch does not invent an insecure public unlock endpoint.
+The original lifecycle suite exercises admin bench authorization independently of
+payment. The [customer access suite](../embedded/customer-unlock.md) uses this same
+harness to test reservation-scoped credentials, bound payment proof, access windows,
+idempotency, device safety, and uncertain outcomes. Legacy reservations keep their
+admin/public workflow. A standalone confirmed status cannot authorize customer access.
 
 Signed failed events are currently recorded but do not introduce a payment-failed
 reservation state. A valid late success is acknowledged and recorded without
@@ -143,8 +136,7 @@ Redis database 15 for `npm run test:reservation -- --ci`. It reuses that job's
 service containers, not Docker Compose, and needs no GitHub secrets. Required
 check names stay unchanged (`api`, `web`, `firmware`, `dev-tooling`). The suite
 fails the API job normally; no skipped required scenarios or continue-on-error.
-The absent customer authorization feature is a documented scope gap, not a
-passing assertion that it is implemented.
+Customer authorization tests run in the same required API job.
 
 ## Local verification — 2026-11-05
 
