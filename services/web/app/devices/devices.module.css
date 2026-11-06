@@ -1,53 +1,23 @@
-.fleet {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 310px), 1fr));
-  align-items: start;
-  gap: 16px;
-}
-.device {
-  min-width: 0;
-  padding: 20px;
-  overflow-wrap: anywhere;
-}
-.identity,
 .drawerHead,
-.footer,
-.manage,
 .more,
 .lastSeen {
   display: flex;
   align-items: center;
 }
-.identity {
-  gap: 11px;
-}
-.hardware,
 .iconButton {
   display: inline-grid;
   place-items: center;
   flex-shrink: 0;
   border-radius: var(--radius-md);
 }
-.hardware {
-  width: 40px;
-  height: 40px;
-  color: var(--primary);
-  background: var(--primary-soft);
-}
-.identity h2,
 .drawerHead h2,
 .drawerBody h3 {
   margin: 0;
   font-weight: 700;
 }
-.identity h2 {
-  font-size: 1.12rem;
-  line-height: 1.3;
-}
 .deviceId,
 .caption,
 .lastSeen,
-.smallLabel,
 .reading dt span,
 .history time,
 .history p,
@@ -84,8 +54,7 @@
   height: 18px;
   stroke-width: 1.75;
 }
-.reading dt span,
-.smallLabel {
+.reading dt span {
   font-size: 0.72rem;
 }
 .reading dd {
@@ -105,34 +74,10 @@
 .neutral {
   color: var(--muted);
 }
-.footer {
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 8px;
-  border-top: 1px solid var(--border);
-  padding-top: 12px;
-}
-.footer p {
-  font-size: 0.82rem;
-  font-weight: 600;
-  margin: 1px 0 0;
-}
-.manage,
 .more,
 .iconButton {
   cursor: pointer;
 }
-.manage {
-  gap: 3px;
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--control-background);
-  color: var(--primary);
-  font-size: 0.8rem;
-  font-weight: 700;
-}
-.manage:hover,
 .iconButton:hover {
   background: var(--control-hover);
 }

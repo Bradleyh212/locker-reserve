@@ -17,17 +17,12 @@ type Reading = [
   LucideIcon,
   "good" | "danger" | "warning" | "neutral",
 ];
-export default function DeviceStatus({
-  device,
-  disconnected,
-  large = false,
-}: {
-  device: Device;
-  disconnected: boolean;
-  large?: boolean;
-}) {
+export function deviceReadings(
+  device: Device,
+  disconnected: boolean,
+): Reading[] {
   const stale = disconnected || !device.online;
-  const readings: Reading[] = [
+  return [
     disconnected
       ? ["Connection", "Unknown", CircleHelp, "neutral"]
       : device.online
@@ -39,11 +34,23 @@ export default function DeviceStatus({
         ? ["Door", "Open", DoorOpen, "danger"]
         : ["Door", "Closed", DoorClosed, "good"],
     stale || !["ACTIVE", "INACTIVE"].includes(device.outputState)
-      ? ["Lock", "Unknown", LockKeyhole, "neutral"]
+      ? ["Driver", "Unknown", LockKeyhole, "neutral"]
       : device.outputState === "ACTIVE"
-        ? ["Lock", "Energized", LockKeyholeOpen, "warning"]
-        : ["Lock", "Inactive", LockKeyhole, "neutral"],
+        ? ["Driver", "Energized", LockKeyholeOpen, "warning"]
+        : ["Driver", "Inactive", LockKeyhole, "neutral"],
   ];
+}
+
+export default function DeviceStatus({
+  device,
+  disconnected,
+  large = false,
+}: {
+  device: Device;
+  disconnected: boolean;
+  large?: boolean;
+}) {
+  const readings = deviceReadings(device, disconnected);
   return (
     <dl className={large ? styles.largeReadings : styles.readings}>
       {readings.map(([label, value, Icon, tone]) => (
@@ -51,17 +58,12 @@ export default function DeviceStatus({
           key={label}
           className={styles.reading}
           title={
-            label === "Lock" ? "Reported solenoid driver output" : undefined
+            label === "Driver" ? "Reported solenoid driver output" : undefined
           }
         >
           <dt>
             <Icon aria-hidden="true" className={styles[tone]} />
-            <span>
-              {label}
-              {label === "Lock" && (
-                <span className="sr-only"> driver output</span>
-              )}
-            </span>
+            <span>{label}</span>
           </dt>
           <dd>{value}</dd>
         </div>

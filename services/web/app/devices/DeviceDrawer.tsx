@@ -6,6 +6,8 @@ import PulseFields from "./PulseFields";
 import { statusLabel, readable, type Device } from "./device-model";
 import styles from "./devices.module.css";
 
+import Cooldown, { type ClockSample } from "./Cooldown";
+
 export type Feedback = { id: string; error: boolean; text: string };
 export default function DeviceDrawer({
   device,
@@ -15,6 +17,8 @@ export default function DeviceDrawer({
   busy,
   feedback,
   pulse,
+  clock,
+  revalidate,
 }: {
   device?: Device;
   disconnected: boolean;
@@ -22,6 +26,8 @@ export default function DeviceDrawer({
   opener: HTMLElement | null;
   busy: boolean;
   feedback: Feedback | null;
+  clock: ClockSample | null;
+  revalidate: () => void;
   pulse: (d: Device, form: HTMLFormElement) => void;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -36,7 +42,7 @@ export default function DeviceDrawer({
       dialog.close();
       document.body.style.overflow = previous;
       if (opener?.isConnected) opener.focus();
-      else document.getElementById("devices-title")?.focus();
+      else document.getElementById("lockers-title")?.focus();
     };
   }, [opener]);
   return (
@@ -112,7 +118,7 @@ export default function DeviceDrawer({
               )}
             </p>
             <p className={styles.caption}>
-              Lock shows driver output. The latch position is unverified.
+              Driver shows solenoid output. The latch position is unverified.
             </p>
           </section>
           <section className={styles.panel}>
@@ -147,12 +153,12 @@ export default function DeviceDrawer({
                   : device.unlock.blockedReason ||
                     "Waiting for a safe device state."}
                 {device.unlock.cooldownUntil && !disconnected && (
-                  <span>
-                    {" "}
-                    Retry after{" "}
-                    {new Date(device.unlock.cooldownUntil).toLocaleTimeString()}
-                    .
-                  </span>
+                  <Cooldown
+                    key={device.unlock.cooldownUntil}
+                    until={device.unlock.cooldownUntil}
+                    clock={clock}
+                    revalidate={revalidate}
+                  />
                 )}
               </p>
             )}

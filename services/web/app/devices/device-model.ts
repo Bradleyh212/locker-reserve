@@ -18,6 +18,7 @@ export function readable(value: string) {
 
 export type Device = {
   id: string;
+  lockerId: string;
   online: boolean;
   lastSeen: string | null;
   doorState: string;

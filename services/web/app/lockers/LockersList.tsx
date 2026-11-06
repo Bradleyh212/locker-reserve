@@ -1,125 +1,269 @@
-'use client'
+"use client";
 
-import ConfirmAction from '../components/ConfirmAction'
-import { useState } from 'react'
-import { apiUrl, authFetch } from '../lib/auth'
-import { formatDateTime, getApiErrorMessage } from '../lib/ui'
+import { useRef, useState } from "react";
+import { Archive, Cpu, Unplug, ChevronRight } from "lucide-react";
+import ConfirmAction from "../components/ConfirmAction";
+import { apiUrl, authFetch } from "../lib/auth";
+import { getApiErrorMessage } from "../lib/ui";
+import DeviceStatus, { deviceReadings } from "../devices/DeviceStatus";
+import { statusLabel, type Device } from "../devices/device-model";
+import styles from "./inventory.module.css";
 
-type Locker = {
-	id: string
-	code: string
-	location: string
-	isActive: boolean
-	createdAt: string
-	updatedAt: string
-}
-
+export type Locker = {
+  id: string;
+  code: string;
+  location: string;
+  isActive: boolean;
+};
+type Props = {
+  lockers: Locker[];
+  view: "cards" | "table";
+  byLocker: Map<string, Device>;
+  stale: boolean;
+  filtered: boolean;
+  loadingHardware: boolean;
+  changed: () => void;
+  manage: (deviceId: string, lockerId: string, opener: HTMLElement) => void;
+};
 export default function LockersList({
-	lockers,
-	onChanged,
-}: {
-	lockers: Locker[]
-	onChanged: () => void
-}) {
-	const [loadingId, setLoadingId] = useState<string | null>(null)
-	const [error, setError] = useState<string | null>(null)
-
-	async function toggleActive(locker: Locker) {
-		setError(null)
-		setLoadingId(locker.id)
-
-		try {
-			const res = await authFetch(apiUrl(`/lockers/${locker.id}`), {
-				method: 'PATCH',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ isActive: !locker.isActive }),
-			})
-
-			const data = await res.json().catch(() => null)
-
-			if (!res.ok) {
-				setError(getApiErrorMessage(data, `Request failed (${res.status})`))
-				return
-			}
-
-			onChanged()
-		} catch (e: unknown) {
-			setError((e as { message?: string } | null)?.message ?? 'Network error')
-		} finally {
-			setLoadingId(null)
-		}
-	}
-
-	return (
-		<section>
-			<div className="page-header" style={{ marginBottom: 12 }}>
-				<div>
-					<h2 className="section-title">Lockers</h2>
-					<p className="metric-note">
-						{lockers.length} locker{lockers.length === 1 ? '' : 's'} in inventory
-					</p>
-				</div>
-			</div>
-
-			{error ? <p className="alert alert-error">{error}</p> : null}
-
-			{lockers.length === 0 ? (
-				<p className="empty-state">No lockers have been created yet.</p>
-			) : (
-				<div className="table-wrap">
-					<table className="table">
-						<thead>
-							<tr>
-								<th>Code</th>
-								<th>Location</th>
-								<th>Status</th>
-								<th>Updated</th>
-								<th>Action</th>
-							</tr>
-						</thead>
-						<tbody>
-							{lockers.map((locker) => (
-								<tr key={locker.id}>
-									<td>
-										<strong>{locker.code}</strong>
-									</td>
-									<td>{locker.location}</td>
-									<td>
-										<span
-											className={
-												locker.isActive
-													? 'badge badge-success'
-													: 'badge badge-muted'
-											}
-										>
-											{locker.isActive ? 'Active' : 'Inactive'}
-										</span>
-									</td>
-									<td>{formatDateTime(locker.updatedAt)}</td>
-									<td>
-										<ConfirmAction
-											question={locker.isActive ? { title: `Deactivate locker ${locker.code}?`, detail: "It will be hidden from public availability searches.", keep: "Keep active", confirm: "Deactivate locker" } : undefined}
-											onAction={() => void toggleActive(locker)}
-											disabled={loadingId === locker.id}
-											className={
-												locker.isActive
-													? 'button button-danger'
-													: 'button button-secondary'
-											}
-										>
-											{loadingId === locker.id
-												? 'Updating...'
-												: locker.isActive
-													? 'Deactivate'
-													: 'Activate'}
-										</ConfirmAction>
-									</td>
-								</tr>
-							))}
-						</tbody>
-					</table>
-				</div>
-			)}
-		</section>
-	)
+  lockers,
+  view,
+  byLocker,
+  stale,
+  loadingHardware,
+  filtered,
+  changed,
+  manage,
+}: Props) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState("");
+  const inflight = useRef(false);
+  async function toggle(l: Locker) {
+    if (inflight.current) return;
+    inflight.current = true;
+    setBusy(l.id);
+    setError("");
+    try {
+      const res = await authFetch(
+        apiUrl("/lockers/" + encodeURIComponent(l.id)),
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ isActive: !l.isActive }),
+        },
+      );
+      const data = await res.json().catch(() => null);
+      if (!res.ok)
+        throw new Error(getApiErrorMessage(data, "Could not update locker"));
+      await changed();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not update locker");
+    } finally {
+      inflight.current = false;
+      setBusy(null);
+    }
+  }
+  function badge(l: Locker) {
+    return (
+      <span
+        className={"badge " + (l.isActive ? "badge-success" : "badge-muted")}
+      >
+        {l.isActive ? "Active" : "Inactive"}
+      </span>
+    );
+  }
+  function actions(l: Locker, d?: Device) {
+    return (
+      <div className={styles.actions}>
+        <ConfirmAction
+          disabled={!!busy}
+          className={styles.toggle}
+          question={
+            l.isActive
+              ? {
+                  title: "Deactivate locker " + l.code + "?",
+                  detail:
+                    "It will be hidden from public availability searches.",
+                  keep: "Keep active",
+                  confirm: "Deactivate locker",
+                }
+              : undefined
+          }
+          onAction={() => void toggle(l)}
+        >
+          {busy === l.id ? "Updating…" : l.isActive ? "Deactivate" : "Activate"}
+        </ConfirmAction>
+        {d ? (
+          <button
+            className={styles.manage}
+            aria-haspopup="dialog"
+            onClick={(e) => manage(d.id, l.id, e.currentTarget)}
+          >
+            Manage <ChevronRight size={14} />
+          </button>
+        ) : (
+          !stale &&
+          !loadingHardware && (
+            <button
+              className={styles.setup}
+              disabled
+              title="Device provisioning is performed outside the dashboard"
+            >
+              Device setup
+            </button>
+          )
+        )}
+      </div>
+    );
+  }
+  const missing = loadingHardware
+    ? "Loading hardware…"
+    : stale
+      ? "Device link unknown"
+      : "No device linked";
+  return (
+    <>
+      {error && (
+        <p className="alert alert-error" role="alert">
+          {error}
+        </p>
+      )}
+      {!lockers.length ? (
+        <p className="empty-state">
+          {filtered
+            ? "No lockers match this filter."
+            : "No lockers have been created yet."}
+        </p>
+      ) : view === "cards" ? (
+        <div className={styles.grid}>
+          {lockers.map((l) => {
+            const d = byLocker.get(l.id);
+            return (
+              <section
+                key={l.id}
+                className={"card " + styles.card}
+                aria-label={"Locker " + l.code}
+              >
+                <header className={styles.cardHead}>
+                  <span className={styles.mark}>
+                    <Archive size={21} />
+                  </span>
+                  <div>
+                    <h3>Locker {l.code}</h3>
+                    <p>{l.location}</p>
+                  </div>
+                  {badge(l)}
+                </header>
+                {d ? (
+                  <div className={styles.hardware}>
+                    <p className={styles.deviceId}>
+                      <Cpu size={15} />
+                      {d.id}
+                    </p>
+                    <DeviceStatus device={d} disconnected={stale} />
+                  </div>
+                ) : (
+                  <div className={styles.unlinked}>
+                    <Unplug size={23} />
+                    <div>
+                      <strong>{missing}</strong>
+                      <p>
+                        {!loadingHardware && !stale
+                          ? "Physical monitoring unavailable"
+                          : "Waiting for device data."}
+                      </p>
+                    </div>
+                  </div>
+                )}
+                <footer>
+                  <div>
+                    {d && (
+                      <>
+                        <span>Latest activity</span>
+                        <p>
+                          {d.commands[0]
+                            ? statusLabel(d.commands[0].status)
+                            : "No commands yet"}
+                        </p>
+                      </>
+                    )}
+                  </div>
+                  {actions(l, d)}
+                </footer>
+              </section>
+            );
+          })}
+        </div>
+      ) : (
+        <div
+          className="table-wrap"
+          role="region"
+          tabIndex={0}
+          aria-label="Locker inventory table"
+        >
+          <table className={"table " + styles.table}>
+            <thead>
+              <tr>
+                {[
+                  "Locker",
+                  "Location",
+                  "Inventory status",
+                  "Device",
+                  "Door",
+                  "Driver",
+                  "Actions",
+                ].map((t) => (
+                  <th scope="col" key={t}>
+                    {t}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {lockers.map((l) => {
+                const d = byLocker.get(l.id),
+                  readings = d ? deviceReadings(d, stale) : [];
+                const reading = (i: number) => {
+                  const r = readings[i];
+                  if (!r) return "—";
+                  const [, value, Icon, tone] = r;
+                  return (
+                    <span className={styles.inline}>
+                      <Icon
+                        aria-hidden="true"
+                        size={15}
+                        className={styles[tone]}
+                      />
+                      {value}
+                    </span>
+                  );
+                };
+                return (
+                  <tr key={l.id}>
+                    <th scope="row">{l.code}</th>
+                    <td>{l.location}</td>
+                    <td>{badge(l)}</td>
+                    <td>
+                      {d ? (
+                        <>
+                          <strong>{d.id}</strong>
+                          <br />
+                          {reading(0)}
+                        </>
+                      ) : (
+                        missing
+                      )}
+                    </td>
+                    <td>{reading(1)}</td>
+                    <td>{reading(2)}</td>
+                    <td>{actions(l, d)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
+  );
 }
