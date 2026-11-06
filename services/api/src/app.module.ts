@@ -1,4 +1,5 @@
 import { HealthController } from './health.controller';
+import { CustomerModule } from './customer/customer.module';
 import { DevicesModule } from './devices/devices.module';
 import { Module } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
@@ -15,6 +16,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
 @Module({
   imports: [
     DevicesModule,
+    CustomerModule,
     ScheduleModule.forRoot(),
     RedisCacheModule,
     PrismaModule,
