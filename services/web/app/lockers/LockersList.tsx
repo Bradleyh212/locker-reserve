@@ -1,5 +1,6 @@
 'use client'
 
+import ConfirmAction from '../components/ConfirmAction'
 import { useState } from 'react'
 import { apiUrl, authFetch } from '../lib/auth'
 import { formatDateTime, getApiErrorMessage } from '../lib/ui'
@@ -24,15 +25,6 @@ export default function LockersList({
 	const [error, setError] = useState<string | null>(null)
 
 	async function toggleActive(locker: Locker) {
-		if (
-			locker.isActive &&
-			!window.confirm(
-				`Deactivate locker ${locker.code}? It will be hidden from public availability searches.`,
-			)
-		) {
-			return
-		}
-
 		setError(null)
 		setLoadingId(locker.id)
 
@@ -105,8 +97,9 @@ export default function LockersList({
 									</td>
 									<td>{formatDateTime(locker.updatedAt)}</td>
 									<td>
-										<button
-											onClick={() => toggleActive(locker)}
+										<ConfirmAction
+											question={locker.isActive ? { title: `Deactivate locker ${locker.code}?`, detail: "It will be hidden from public availability searches.", keep: "Keep active", confirm: "Deactivate locker" } : undefined}
+											onAction={() => void toggleActive(locker)}
 											disabled={loadingId === locker.id}
 											className={
 												locker.isActive
@@ -119,7 +112,7 @@ export default function LockersList({
 												: locker.isActive
 													? 'Deactivate'
 													: 'Activate'}
-										</button>
+										</ConfirmAction>
 									</td>
 								</tr>
 							))}
