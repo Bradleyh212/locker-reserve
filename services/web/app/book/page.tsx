@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { loadStripe } from '@stripe/stripe-js'
 import {
@@ -11,6 +11,8 @@ import {
 } from '@stripe/react-stripe-js'
 import { apiUrl } from '../lib/auth'
 import { formatDateTime, getApiErrorMessage } from '../lib/ui'
+
+import { forgetHold, rememberHold, usePendingHolds, type Reservation } from './pending-holds'
 
 const stripePromise = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
 	? loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY)
@@ -23,25 +25,16 @@ type Locker = {
 	isActive: boolean
 }
 
-type Reservation = {
-	id: string
-	lockerId: string
-	startTime: string
-	endTime: string
-	expiresAt: string
-	locker: {
-		code: string
-		location: string
-	}
-}
-
 export default function BookingPage() {
 	const [startTime, setStartTime] = useState('')
 	const [endTime, setEndTime] = useState('')
 	const [location, setLocation] = useState('')
 	const [lockers, setLockers] = useState<Locker[]>([])
 	const [selectedLockerId, setSelectedLockerId] = useState('')
-	const [hold, setHold] = useState<Reservation | null>(null)
+	const holds = usePendingHolds()
+	const [activeId, setActiveId] = useState('')
+	const hold = holds.find(r => r.id === activeId)
+	const requesting = useRef(false)
 	const [clientSecret, setClientSecret] = useState<string | null>(null)
 	const [error, setError] = useState<string | null>(null)
 	const [loading, setLoading] = useState(false)
@@ -54,7 +47,7 @@ export default function BookingPage() {
 	)
 
 	function resetCheckout() {
-		setHold(null)
+		setActiveId('')
 		setClientSecret(null)
 		setPaymentComplete(false)
 	}
@@ -118,67 +111,44 @@ export default function BookingPage() {
 		}
 	}
 
-	async function createHoldAndPayment() {
+	async function checkout(existing?: Reservation) {
+		if (requesting.current) return
 		setError(null)
 		resetCheckout()
-
-		const validationError = validateDates()
-
-		if (validationError) {
-			setError(validationError)
-			return
+		if (!existing) {
+			const invalid = validateDates()
+			if (invalid || !selectedLockerId) { setError(invalid || 'Choose an available locker.'); return }
 		}
-
-		if (!selectedLockerId) {
-			setError('Choose an available locker.')
-			return
-		}
-
+		requesting.current = true
 		setLoading(true)
-
 		try {
-			const holdRes = await fetch(apiUrl('/public/reservations/hold'), {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					lockerId: selectedLockerId,
-					startTime: new Date(startTime).toISOString(),
-					endTime: new Date(endTime).toISOString(),
-				}),
-			})
-			const holdData = await holdRes.json().catch(() => null)
-
-			if (!holdRes.ok) {
-				setError(
-					getApiErrorMessage(holdData, `Hold failed (${holdRes.status})`),
-				)
-				return
+			let receipt = existing
+			if (!receipt) {
+				const range = { lockerId: selectedLockerId, startTime: new Date(startTime).toISOString(), endTime: new Date(endTime).toISOString() }
+				receipt = holds.find(r => r.lockerId === range.lockerId && r.startTime === range.startTime && r.endTime === range.endTime && Date.parse(r.expiresAt) > Date.now())
+				if (!receipt) {
+					const res = await fetch(apiUrl('/public/reservations/hold'), {
+						method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(range),
+					})
+					const data = await res.json()
+					if (!res.ok) throw new Error(getApiErrorMessage(data, 'Could not create hold.'))
+					receipt = data as Reservation
+					rememberHold(receipt)
+				}
 			}
-
-			const paymentRes = await fetch(apiUrl('/public/payments/create-intent'), {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ reservationId: holdData.id }),
+			setActiveId(receipt.id)
+			const res = await fetch(apiUrl('/public/payments/create-intent'), {
+				method: 'POST', headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ reservationId: receipt.id }),
 			})
-			const paymentData = await paymentRes.json().catch(() => null)
-
-			if (!paymentRes.ok) {
-				setError(
-					getApiErrorMessage(
-						paymentData,
-						`Payment setup failed (${paymentRes.status})`,
-					),
-				)
-				return
+			const data = await res.json()
+			if (!res.ok) {
+				if (res.status === 400 || res.status === 404) forgetHold(receipt.id)
+				throw new Error(getApiErrorMessage(data, 'Payment setup failed.'))
 			}
-
-			setHold(holdData)
-			setClientSecret(paymentData.client_secret)
-		} catch (e: unknown) {
-			setError((e as { message?: string } | null)?.message ?? 'Network error')
-		} finally {
-			setLoading(false)
-		}
+			setClientSecret(data.client_secret)
+		} catch (e) { setError(e instanceof Error ? e.message : 'Network error') }
+		finally { requesting.current = false; setLoading(false) }
 	}
 
 	return (
@@ -202,6 +172,15 @@ export default function BookingPage() {
 				<Step number="2" title="Hold" body="Select an available locker." />
 				<Step number="3" title="Pay" body="Complete checkout with Stripe." />
 			</section>
+
+			{holds.filter(r => r.id !== activeId || !clientSecret).map(r => (
+				<section key={r.id} className="card card-pad" style={{ marginBottom: 14 }}>
+					<h2 className="section-title">Unpaid hold · {r.locker.code}</h2>
+					<p>{formatDateTime(r.startTime)} – {formatDateTime(r.endTime)}</p>
+					<p className="metric-note">Complete payment before {formatDateTime(r.expiresAt)}.</p>
+					<button className="button" disabled={loading} onClick={() => void checkout(r)} style={{ marginTop: 12 }}>Continue payment</button>
+				</section>
+			))}
 
 			<form onSubmit={checkAvailability} className="card card-pad form-grid">
 				<div className="form-grid form-grid-two">
@@ -304,8 +283,8 @@ export default function BookingPage() {
 						<button
 							type="button"
 							className="button"
-							disabled={loading || !selectedLockerId || Boolean(clientSecret)}
-							onClick={createHoldAndPayment}
+							disabled={loading || !selectedLockerId || Boolean(hold && clientSecret)}
+							onClick={() => void checkout()}
 							style={{ marginTop: 12 }}
 						>
 							{loading ? 'Preparing checkout...' : 'Create hold and pay'}
@@ -314,7 +293,7 @@ export default function BookingPage() {
 				</section>
 			) : null}
 
-			{hold ? (
+			{hold && clientSecret ? (
 				<section className="card card-pad" style={{ marginTop: 24 }}>
 					<h2 className="section-title">Checkout</h2>
 					<p className="metric-note">
@@ -325,7 +304,7 @@ export default function BookingPage() {
 					{clientSecret && stripePromise ? (
 						<Elements stripe={stripePromise} options={{ clientSecret }}>
 							<PublicPaymentForm
-								onComplete={() => setPaymentComplete(true)}
+								onComplete={() => { forgetHold(hold.id); setClientSecret(null); setPaymentComplete(true) }}
 							/>
 						</Elements>
 					) : (
