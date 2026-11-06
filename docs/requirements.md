@@ -10,7 +10,7 @@ Customers find, reserve and pay for storage lockers. The next milestone is autho
 
 - Locker creation/listing, activation and deactivation; availability by location and time.
 - Ten-minute holds, confirmation, cancellation and scheduled expiration inside the API.
-- Overlap lookup before creating a hold; inactive lockers rejected.
+- Transactional overlap check/insertion serialized per locker; inactive lockers rejected.
 - Public booking at `/book`, PaymentIntent creation and Stripe Elements payment UI.
 - Backend-calculated payment amounts and signature-verified Stripe webhooks.
 - Admin login and guarded routes using an httpOnly JWT cookie; Secure is enabled when NODE_ENV is production.
@@ -21,8 +21,8 @@ These are implementation observations, not a claim that production acceptance te
 
 ## Existing correctness gaps
 
-- Overlap checking and insertion are separate operations. There is no database exclusion constraint or enclosing transaction protecting concurrent holds.
-- Webhook event recording and reservation confirmation are separate writes; do not claim atomic/exactly-once payment processing. The webhook confirms a HOLD without checking its expiresAt.
+- Hold creation now serializes the overlap check/insertion with a locker row lock. Direct database writes still have no exclusion constraint and must not bypass this service.
+- Webhook event recording and conditional unexpired-HOLD confirmation now commit together. Payment reconciliation/refunds and a persistent payment ledger remain absent; do not claim exactly-once physical or payment-provider execution. See [E2E coverage](testing/reservation-e2e.md).
 - Admin confirmation checks hold expiry but does not verify payment. Define whether such reservations authorize access before adding hardware.
 - Public reservations have no customer owner/access credential. A reservation UUID is not proof of entitlement.
 - Redis is a cache, not the source of truth for holds or commands.
