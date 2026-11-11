@@ -5,9 +5,10 @@
 #include <Preferences.h>
 #include <cJSON.h>
 #include <time.h>
+#include <sys/time.h>
 #include "../include/locker.h"
 #include "../include/device_protocol.h"
-#include "../include/door_sensor.h"
+#include "../include/door_heartbeat.h"
 #include "../include/firmware_app.h"
 
 #if __has_include("../include/config.local.h")
@@ -56,7 +57,7 @@ uint32_t reportLastAttempt = 0;
 uint32_t reportRetryDelay = 0;
 
 locker::DoorSensor sensor;
-uint32_t lastHeartbeat = 0;
+locker::DoorHeartbeat doorHeartbeat;
 uint32_t lastPoll = 0;
 uint32_t lastReconnect = 0;
 
@@ -234,9 +235,14 @@ int request(
 
 void heartbeat() {
   refreshSensor();
-  const String reportedDoor = sensor.fresh(millis()) ? doorState() : "UNKNOWN";
+  const uint32_t sampledAt = millis();
+  const auto observed = sensor.fresh(sampledAt) ? sensor.state(sampledAt) : locker::DoorState::Unknown;
+  const String reportedDoor = observed == locker::DoorState::Unknown ? "UNKNOWN" : doorState();
+  timeval sampledTime{};
+  gettimeofday(&sampledTime, nullptr);
   if (!sensor.fresh(millis())) Serial.println("Reed unsettled: heartbeat reports UNKNOWN; output remains inhibited");
   cJSON* b = cJSON_CreateObject();
+  cJSON_AddNumberToObject(b, "observedAtMs", sampledTime.tv_sec * 1000.0 + sampledTime.tv_usec / 1000);
 
   cJSON_AddStringToObject(
     b,
@@ -276,6 +282,14 @@ void heartbeat() {
     response
   );
 
+  cJSON* ack = code == 200 ? cJSON_Parse(response.c_str()) : nullptr;
+  const bool accepted = ack && cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(ack, "accepted")) &&
+    !cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(ack, "ignored"));
+  cJSON_Delete(ack);
+  doorHeartbeat.attempted(sampledAt, observed, accepted);
+#ifdef LOCKER_DOOR_TIMING
+  Serial.printf("Door report sampled=%lu ack=%lu ms\n", (unsigned long)sampledAt, (unsigned long)millis());
+#endif
   Serial.printf(
     "Heartbeat HTTP %d; contact %s; output inactive\n",
     code,
@@ -900,6 +914,7 @@ void run() {
       WL_CONNECTED
   ) {
 
+    doorHeartbeat.disconnected();
     if (
       millis() -
         lastReconnect >=
@@ -926,15 +941,7 @@ void run() {
   // HEARTBEAT
   // --------------------------------------------------
 
-  if (
-    millis() -
-      lastHeartbeat >=
-      5000
-  ) {
-
-    lastHeartbeat =
-      millis();
-
+  if (doorHeartbeat.due(sensor.state(millis()), sensor.fresh(millis()), millis())) {
     heartbeat();
   }
 

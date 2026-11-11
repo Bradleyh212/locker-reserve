@@ -57,6 +57,7 @@ model LockerDevice {
   tokenHash String @unique
   enabled Boolean @default(true)
   lastSeen DateTime?
+  doorObservedAt DateTime?
   doorState String @default("UNKNOWN")
   outputState String @default("INACTIVE")
   firmwareVersion String @default("unknown")

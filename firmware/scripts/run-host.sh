@@ -14,3 +14,7 @@ compiler=${CXX:-c++}
 "$compiler" -std=c++17 -Wall -Wextra -Werror -pedantic -I"$firmware_dir/include" \
   "$firmware_dir/test/device_protocol_test.cpp" -o "$firmware_dir/build/device-protocol-tests"
 "$firmware_dir/build/device-protocol-tests"
+
+"$compiler" -std=c++17 -Wall -Wextra -Werror -pedantic -I"$firmware_dir/include" \
+  "$firmware_dir/test/door_heartbeat_test.cpp" -o "$firmware_dir/build/door-heartbeat-tests"
+"$firmware_dir/build/door-heartbeat-tests"

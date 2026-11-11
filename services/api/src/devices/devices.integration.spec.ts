@@ -57,6 +57,36 @@ suite('device HTTP + PostgreSQL integration', () => {
     if (priorLimit === undefined) delete process.env.DEVICE_MAX_PULSE_MS;
     else process.env.DEVICE_MAX_PULSE_MS = priorLimit;
   });
+  it('preserves the latest contact across delayed, duplicate, and dropped reports', async () => {
+    const http = app.getHttpServer();
+    const sample = Date.now() - 200;
+    const report = (doorState: string, observedAtMs?: number) => request(http)
+      .post('/v1/device/heartbeat').set('Authorization', 'Bearer ' + token)
+      .send({ doorState, observedAtMs, outputState: 'INACTIVE', firmwareVersion: 'sim',
+        actuationEnabled: true, maxPulseMs: 200 });
+    await report('CLOSED', sample).expect(200);
+    const start = performance.now();
+    await report('OPEN', sample + 100).expect(200, { accepted: true });
+    const listed = await request(http).get('/v1/admin/devices').set('Cookie', cookie).expect(200);
+    expect(listed.body.find((d: {id: string}) => d.id === deviceId).doorState).toBe('OPEN');
+    if (process.env.LOCKER_DOOR_TIMING) console.info('Local heartbeat POST + admin GET ms:', performance.now() - start);
+    for (const stamp of [sample, sample + 100, undefined]) {
+      await report('CLOSED', stamp).expect(200, { accepted: false, ignored: true });
+    }
+    await report('CLOSED', Date.now() - 20000).expect(400);
+    expect(await db.lockerDevice.findUniqueOrThrow({ where: { id: deviceId } })).toMatchObject({
+      doorState: 'OPEN', lastSeen: new Date(sample + 100),
+    });
+    await request(http).post('/v1/admin/devices/' + deviceId + '/unlock-requests').set('Cookie', cookie)
+      .send({ pulseMs: 100, reason: 'stale test' }).expect(409);
+    await report('UNKNOWN', sample + 101).expect(200);
+    await report('CLOSED', Date.now()).expect(200, { accepted: true });
+  });
+  beforeEach(async () => {
+    await db.lockerDevice.update({ where: { id: deviceId }, data: {
+      doorObservedAt: null, lastSeen: null, doorState: 'UNKNOWN', enabled: true,
+    } });
+  });
   it('authenticates both sides, serializes requests, re-delivers same ID, and records idempotent results', async () => {
     const http = app.getHttpServer(),
       auth = 'Bearer ' + token;
