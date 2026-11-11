@@ -494,7 +494,7 @@ test("keeps a selected device stable in a large collection", async ({
   await expect(page.getByRole("dialog")).toHaveCount(1);
 });
 
-test("legacy URL redirects to one sidebar destination; metrics and association use IDs", async ({
+test("unified Lockers dashboard has one sidebar destination; metrics and association use IDs", async ({
   page,
 }) => {
   const s = await setup(page, [fixture(1), fixture(3)]);
@@ -508,11 +508,22 @@ test("legacy URL redirects to one sidebar destination; metrics and association u
     createdAt: when,
     updatedAt: when,
   });
-  await page.goto("/devices");
+  await page.goto("/lockers");
   await expect(page).toHaveURL(/\/lockers$/);
   await expect(
-    page.getByRole("link", { name: "Devices", exact: true }),
+    page.getByRole("heading", { name: "Lockers", exact: true }),
+  ).toBeVisible();
+  const navigation = page.getByRole("navigation", { name: "Admin navigation" });
+  await expect(
+    navigation.getByRole("link", { name: "Devices", exact: true }),
   ).toHaveCount(0);
+  const lockersLink = navigation.getByRole("link", {
+    name: "Lockers",
+    exact: true,
+  });
+  await expect(lockersLink).toHaveCount(1);
+  await expect(lockersLink).toBeVisible();
+  await expect(lockersLink).toHaveAttribute("href", "/lockers");
   await expect(
     page.getByRole("link", { name: "Lockers", exact: true }),
   ).toHaveCount(1);
@@ -532,6 +543,12 @@ test("legacy URL redirects to one sidebar destination; metrics and association u
   await expect(
     solo.getByRole("button", { name: "Device setup" }),
   ).toBeDisabled();
+  await manage(page).click();
+  await expect(
+    page.getByRole("dialog", { name: "Locker A-101", exact: true }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(manage(page)).toBeFocused();
   expect(s.posts).toEqual([]);
 });
 
