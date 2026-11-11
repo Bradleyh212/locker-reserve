@@ -1,8 +1,7 @@
 import {
   DoorClosed,
   DoorOpen,
-  LockKeyhole,
-  LockKeyholeOpen,
+  Zap,
   Wifi,
   WifiOff,
   CircleHelp,
@@ -34,10 +33,10 @@ export function deviceReadings(
         ? ["Door", "Open", DoorOpen, "danger"]
         : ["Door", "Closed", DoorClosed, "good"],
     stale || !["ACTIVE", "INACTIVE"].includes(device.outputState)
-      ? ["Driver", "Unknown", LockKeyhole, "neutral"]
+      ? ["Solenoid", "Unknown", Zap, "neutral"]
       : device.outputState === "ACTIVE"
-        ? ["Driver", "Energized", LockKeyholeOpen, "warning"]
-        : ["Driver", "Inactive", LockKeyhole, "neutral"],
+        ? ["Solenoid", "Energized", Zap, "warning"]
+        : ["Solenoid", "Inactive", Zap, "neutral"],
   ];
 }
 
@@ -58,14 +57,24 @@ export default function DeviceStatus({
           key={label}
           className={styles.reading}
           title={
-            label === "Driver" ? "Reported solenoid driver output" : undefined
+            label === "Solenoid"
+              ? "Last device-reported solenoid output; not a live pulse confirmation or proof of latch position"
+              : undefined
           }
         >
           <dt>
             <Icon aria-hidden="true" className={styles[tone]} />
             <span>{label}</span>
           </dt>
-          <dd>{value}</dd>
+          <dd
+            className={
+              label === "Solenoid" || value === "Unknown"
+                ? styles[tone]
+                : undefined
+            }
+          >
+            {value}
+          </dd>
         </div>
       ))}
     </dl>
