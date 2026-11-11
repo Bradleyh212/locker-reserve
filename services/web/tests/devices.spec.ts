@@ -707,3 +707,58 @@ test("mobile inventory table scrolls independently and keeps Manage usable", asy
     page.getByRole("dialog", { name: "Locker A-101" }),
   ).toBeVisible();
 });
+
+
+test("Solenoid uses Zap in cards, table and drawer and preserves status order", async ({ page }) => {
+  await setup(page, [fixture(1)]);
+  await page.goto("/lockers");
+  await expect(card(page).locator("dt")).toHaveText(["Connection", "Door", "Solenoid"]);
+  await expect(card(page).locator("svg.lucide-zap")).toHaveCount(1);
+  await expect(card(page).getByText("Driver", { exact: true })).toHaveCount(0);
+  await manage(page).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.locator("dt")).toHaveText(["Connection", "Door", "Solenoid"]);
+  await expect(dialog.locator("svg.lucide-zap")).toHaveCount(1);
+  await expect(dialog.getByText(/Solenoid shows the last device-reported output/)).toBeVisible();
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Table", exact: true }).click();
+  await expect(page.getByRole("columnheader", { name: "Solenoid", exact: true })).toBeVisible();
+  await expect(page.getByRole("columnheader", { name: "Driver", exact: true })).toHaveCount(0);
+  const row = page.getByRole("row").filter({ hasText: "A-101" });
+  await expect(row.locator("svg.lucide-zap")).toHaveCount(1);
+  await expect(row.getByText("Inactive", { exact: true })).toBeVisible();
+});
+
+for (const commandStatus of ["QUEUED", "PENDING", "DELIVERED", "OUTPUT_PULSE_COMPLETED"]) {
+  test("500 ms " + commandStatus + " command does not imply current energization", async ({ page }) => {
+    const device = fixture(1);
+    device.commands[0].status = commandStatus;
+    device.commands[0].pulseMs = 500;
+    const s = await setup(page, [device]);
+    await page.goto("/lockers");
+    await expect(card(page).getByText("Inactive", { exact: true })).toBeVisible();
+    await expect(card(page).getByText("Energized", { exact: true })).toHaveCount(0);
+    expect(s.posts).toEqual([]);
+  });
+}
+
+for (const outputState of ["INACTIVE", "ACTIVE", "UNKNOWN"]) {
+  test("Solenoid maps reported " + outputState + " and hides it after disconnect", async ({ page }) => {
+    const device = fixture(1);
+    device.outputState = outputState;
+    const s = await setup(page, [device]);
+    await page.clock.install();
+    await page.goto("/lockers");
+    await manage(page).click();
+    const reading = page.getByRole("dialog").locator("dl > div").filter({ has: page.locator("dt", { hasText: "Solenoid" }) });
+    await expect(reading.locator("dd")).toHaveText(outputState === "ACTIVE" ? "Energized" : outputState === "INACTIVE" ? "Inactive" : "Unknown");
+    await expect(reading.locator("svg.lucide-zap")).toHaveCount(1);
+    s.devices[0].online = false;
+    await page.clock.fastForward(3001);
+    await expect(reading.locator("dd")).toHaveText("Unknown");
+    s.bad = true;
+    await page.clock.fastForward(3001);
+    await expect(reading.locator("dd")).toHaveText("Unknown");
+    expect(s.posts).toEqual([]);
+  });
+}

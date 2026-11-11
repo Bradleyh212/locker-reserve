@@ -118,7 +118,8 @@ export default function DeviceDrawer({
               )}
             </p>
             <p className={styles.caption}>
-              Driver shows solenoid output. The latch position is unverified.
+              Solenoid shows the last device-reported output. Short pulses may occur
+              between updates. The latch position is unverified.
             </p>
           </section>
           <section className={styles.panel}>

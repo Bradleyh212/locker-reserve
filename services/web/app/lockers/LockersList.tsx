@@ -210,7 +210,7 @@ export default function LockersList({
                   "Inventory status",
                   "Device",
                   "Door",
-                  "Driver",
+                  "Solenoid",
                   "Actions",
                 ].map((t) => (
                   <th scope="col" key={t}>
@@ -226,15 +226,30 @@ export default function LockersList({
                 const reading = (i: number) => {
                   const r = readings[i];
                   if (!r) return "—";
-                  const [, value, Icon, tone] = r;
+                  const [label, value, Icon, tone] = r;
                   return (
-                    <span className={styles.inline}>
+                    <span
+                      className={styles.inline}
+                      title={
+                        label === "Solenoid"
+                          ? "Last device-reported solenoid output; not a live pulse confirmation or proof of latch position"
+                          : undefined
+                      }
+                    >
                       <Icon
                         aria-hidden="true"
                         size={15}
                         className={styles[tone]}
                       />
-                      {value}
+                      <span
+                        className={
+                          label === "Solenoid" || value === "Unknown"
+                            ? styles[tone]
+                            : undefined
+                        }
+                      >
+                        {value}
+                      </span>
                     </span>
                   );
                 };
