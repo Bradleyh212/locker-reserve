@@ -68,8 +68,7 @@ export default function CreateLockerForm({
 	}
 
 	return (
-		<section className="card card-pad">
-			<h2 className="section-title">Create locker</h2>
+		<section>
 			<p className="metric-note" style={{ marginBottom: 16 }}>
 				Add a locker with a short code and a clear customer-facing location.
 			</p>
