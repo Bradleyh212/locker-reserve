@@ -59,6 +59,36 @@ suite('device HTTP + PostgreSQL integration', () => {
     if (priorLimit === undefined) delete process.env.DEVICE_MAX_PULSE_MS;
     else process.env.DEVICE_MAX_PULSE_MS = priorLimit;
   });
+  it('preserves the latest contact across delayed, duplicate, and dropped reports', async () => {
+    const http = app.getHttpServer();
+    const sample = Date.now() - 200;
+    const report = (doorState: string, observedAtMs?: number) => request(http)
+      .post('/v1/device/heartbeat').set('Authorization', 'Bearer ' + token)
+      .send({ doorState, observedAtMs, outputState: 'INACTIVE', firmwareVersion: 'sim',
+        actuationEnabled: true, maxPulseMs: 200 });
+    await report('CLOSED', sample).expect(200);
+    const start = performance.now();
+    await report('OPEN', sample + 100).expect(200, { accepted: true });
+    const listed = await request(http).get('/v1/admin/devices').set('Cookie', cookie).expect(200);
+    expect(listed.body.find((d: {id: string}) => d.id === deviceId).doorState).toBe('OPEN');
+    if (process.env.LOCKER_DOOR_TIMING) console.info('Local heartbeat POST + admin GET ms:', performance.now() - start);
+    for (const stamp of [sample, sample + 100, undefined]) {
+      await report('CLOSED', stamp).expect(200, { accepted: false, ignored: true });
+    }
+    await report('CLOSED', Date.now() - 20000).expect(400);
+    expect(await db.lockerDevice.findUniqueOrThrow({ where: { id: deviceId } })).toMatchObject({
+      doorState: 'OPEN', lastSeen: new Date(sample + 100),
+    });
+    await request(http).post('/v1/admin/devices/' + deviceId + '/unlock-requests').set('Cookie', cookie)
+      .send({ pulseMs: 100, reason: 'stale test' }).expect(409);
+    await report('UNKNOWN', sample + 101).expect(200);
+    await report('CLOSED', Date.now()).expect(200, { accepted: true });
+  });
+  beforeEach(async () => {
+    await db.lockerDevice.update({ where: { id: deviceId }, data: {
+      doorObservedAt: null, lastSeen: null, doorState: 'UNKNOWN', enabled: true,
+    } });
+  });
   it('authenticates both sides, serializes requests, re-delivers same ID, and records idempotent results', async () => {
     const http = app.getHttpServer(),
       auth = 'Bearer ' + token;
@@ -424,4 +454,86 @@ suite('device HTTP + PostgreSQL integration', () => {
       ).toBe(1);
     }
   }, 30000);
+  it('atomically combines door timestamps, boot changes, reconnects and command recovery', async () => {
+    // The background sweep is tested above; keep snapshots deterministic here.
+    const scheduler = app.get(SchedulerRegistry);
+    for (const interval of scheduler.getIntervals()) scheduler.deleteInterval(interval);
+    // Start an independent health session after the preceding recovery scenarios.
+    await db.deviceCommand.deleteMany({ where: { deviceId } });
+    await db.deviceEvent.deleteMany({ where: { deviceId } });
+    await db.deviceHealth.deleteMany({ where: { deviceId } });
+    const sampled = Date.now() - 500;
+    const diagnostics = {
+      bootId: 'c'.repeat(32), uptimeMs: 1000, resetReason: 'POWERON',
+      wifiDisconnects: 0, communicationFailures: 0,
+    };
+    const body = {
+      doorState: 'OPEN', observedAtMs: sampled, outputState: 'INACTIVE',
+      firmwareVersion: 'simulated', actuationEnabled: true, maxPulseMs: 5000,
+      diagnostics,
+    };
+    const report = (overrides: object = {}) => request(app.getHttpServer())
+      .post('/v1/device/heartbeat').set('Authorization', 'Bearer ' + token)
+      .send({ ...body, ...overrides });
+    await report().expect(200, { accepted: true });
+    const command = await db.deviceCommand.create({ data: {
+      deviceId, lockerId, requestedBy: 'test', reason: 'simulated recovery',
+      pulseMs: 100, expiresAt: new Date(Date.now() + 60000),
+    } });
+    const snapshot = async () => ({
+      device: await db.lockerDevice.findUniqueOrThrow({ where: { id: deviceId } }),
+      health: await db.deviceHealth.findUniqueOrThrow({ where: { deviceId } }),
+      events: await db.deviceEvent.findMany({ where: { deviceId }, orderBy: { id: 'asc' } }),
+      command: await db.deviceCommand.findUniqueOrThrow({ where: { id: command.id } }),
+    });
+    const before = await snapshot();
+    const newBoot = { ...diagnostics, bootId: 'd'.repeat(32), uptimeMs: 100 };
+    for (const observedAtMs of [sampled - 1, sampled, undefined]) {
+      await report({ observedAtMs, doorState: 'CLOSED', diagnostics: newBoot })
+        .expect(200, { accepted: false, ignored: true });
+      expect(await snapshot()).toEqual(before);
+    }
+    for (const observedAtMs of [Date.now() - 60000, Date.now() + 60000, 1.5]) {
+      await report({ observedAtMs, doorState: 'CLOSED', diagnostics: newBoot }).expect(400);
+      expect(await snapshot()).toEqual(before);
+    }
+    // A newer door timestamp must not bypass duplicate/decreasing diagnostics.
+    for (const d of [diagnostics, { ...diagnostics, uptimeMs: 999 },
+      { ...diagnostics, uptimeMs: 2000, wifiDisconnects: -1 }]) {
+      await report({ observedAtMs: sampled + 1, doorState: 'CLOSED', diagnostics: d })
+        .expect(d.wifiDisconnects < 0 ? 400 : 200);
+      expect(await snapshot()).toEqual(before);
+    }
+    const priorFreshness = process.env.DEVICE_HEARTBEAT_FRESH_MS;
+    try {
+      process.env.DEVICE_HEARTBEAT_FRESH_MS = '1000';
+      await report({ observedAtMs: Date.now() - 2000, diagnostics: newBoot }).expect(400);
+      expect(await snapshot()).toEqual(before);
+    } finally {
+      if (priorFreshness === undefined) delete process.env.DEVICE_HEARTBEAT_FRESH_MS;
+      else process.env.DEVICE_HEARTBEAT_FRESH_MS = priorFreshness;
+    }
+    // Both clocks advance: one atomic reboot observation invalidates old work.
+    await report({ observedAtMs: sampled + 2, diagnostics: newBoot })
+      .expect(200, { accepted: true });
+    const rebooted = await snapshot();
+    expect(rebooted.device.doorState).toBe('OPEN');
+    expect(rebooted.device.lastSeen).toEqual(new Date(sampled + 2));
+    expect(rebooted.health.bootId).toBe(newBoot.bootId);
+    expect(rebooted.command.result).toBeNull();
+    expect(rebooted.command.expiresAt.getTime()).toBeLessThanOrEqual(Date.now());
+    expect(rebooted.events.filter(e => e.type === 'DEVICE_RESTART_DETECTED')).toHaveLength(1);
+    await report({ observedAtMs: sampled + 3, diagnostics: { ...diagnostics, uptimeMs: 9000 } })
+      .expect(200, { accepted: false, ignored: true });
+    expect(await snapshot()).toEqual(rebooted);
+    await db.lockerDevice.update({ where: { id: deviceId }, data: { lastSeen: new Date(Date.now() - 20000) } });
+    await report({ observedAtMs: sampled + 4, diagnostics: { ...newBoot, uptimeMs: 200, wifiDisconnects: 1 } })
+      .expect(200, { accepted: true });
+    const reconnected = await snapshot();
+    expect(reconnected.health.offline).toBe(false);
+    expect(reconnected.events.map(e => e.type)).toEqual(expect.arrayContaining([
+      'DEVICE_RECONNECTED', 'WIFI_INTERRUPTION_REPORTED', 'REBOOT_WITH_UNRESOLVED_COMMAND',
+    ]));
+  });
+
 });

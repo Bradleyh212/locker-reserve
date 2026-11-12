@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { createHash } from 'crypto';
 import { DeviceReliabilityService } from './device-reliability.service';
-import { isFresh, parseDiagnostics } from './device-health';
+import { freshnessMs, isFresh, parseDiagnostics } from './device-health';
 import { PrismaService } from '../prisma/prisma.service';
 
 export const HARD_MAX_PULSE_MS = 5000;
@@ -133,15 +133,28 @@ export class DevicesService {
     }
     const diagnostics = parseDiagnostics(b.diagnostics);
     return this.db.$transaction(async (tx) => {
+      // Validate both observation clocks under the shared device lock before
+      // recording health events or invalidating commands for a new boot.
       await tx.$queryRaw`SELECT "id" FROM "LockerDevice" WHERE "id" = ${id} FOR UPDATE`;
       const device = await tx.lockerDevice.findUnique({ where: { id } });
       if (!device?.enabled) throw new UnauthorizedException();
+      const receivedAt = Date.now();
+      const sampled = b.observedAtMs;
+      const stamped = sampled !== undefined;
+      if (stamped && (!Number.isSafeInteger(sampled) || sampled > receivedAt + 2000 ||
+          sampled <= receivedAt - freshnessMs())) {
+        throw new BadRequestException('Door observation timestamp outside freshness window');
+      }
+      const observed = stamped ? new Date(sampled) : null;
+      if (device.doorObservedAt && (!observed || observed <= device.doorObservedAt))
+        return { accepted: false, ignored: true };
       if (!(await this.reliability.heartbeat(tx, device, diagnostics)))
-        return { accepted: true, ignored: true };
+        return { accepted: false, ignored: true };
       await tx.lockerDevice.update({
         where: { id },
         data: {
-          lastSeen: new Date(),
+          doorObservedAt: observed,
+          lastSeen: new Date(stamped ? Math.min(receivedAt, sampled) : receivedAt),
           doorState: b.doorState,
           outputState: b.outputState,
           firmwareVersion: b.firmwareVersion,

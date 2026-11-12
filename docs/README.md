@@ -18,6 +18,10 @@ Reviewed against the repository on 2026-10-02. This update changes documentation
 6. [Firmware development](embedded/firmware.md)
 7. [Testing](embedded/testing.md) and [operations](embedded/operations.md)
 
+## Automated reservation testing
+
+[Reservation lifecycle E2E setup, coverage and current authorization gaps](testing/reservation-e2e.md).
+
 ## Models and decisions
 
 - [Current database ERD](erd/erd.mmd)

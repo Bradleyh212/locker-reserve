@@ -1,5 +1,6 @@
 'use client'
 
+import ConfirmAction from '../components/ConfirmAction'
 import { useState } from 'react'
 import { apiUrl, authFetch } from '../lib/auth'
 import {
@@ -58,10 +59,6 @@ export default function ReservationsList({
 	}
 
 	async function cancelReservation(id: string) {
-		if (!window.confirm('Cancel this reservation?')) {
-			return
-		}
-
 		setError(null)
 		setLoadingId(id)
 
@@ -150,15 +147,16 @@ export default function ReservationsList({
 												) : null}
 
 												{canCancel ? (
-													<button
-														onClick={() => cancelReservation(reservation.id)}
+													<ConfirmAction
+														question={{ title: `Cancel reservation for ${reservation.locker.code}?`, keep: "Keep reservation", confirm: "Cancel reservation" }}
+															onAction={() => void cancelReservation(reservation.id)}
 														disabled={loadingId === reservation.id}
 														className="button button-danger"
 													>
 														{loadingId === reservation.id
 															? 'Cancelling...'
 															: 'Cancel'}
-													</button>
+													</ConfirmAction>
 												) : null}
 
 												{canPay ? (

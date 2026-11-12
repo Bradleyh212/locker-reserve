@@ -15,6 +15,12 @@ struct DeviceDiagnostics {
     connected = nowConnected;
     if (!connected) heartbeatAccepted = false;
   }
+  void acknowledgeHeartbeat(int status, bool accepted, bool ignored) {
+    heartbeatAccepted = status == 200 && accepted && !ignored;
+  }
+  bool canPoll(bool storageReady) const {
+    return connected && heartbeatAccepted && storageReady;
+  }
   int observeHttp(int status) {
     if (status < 200 || status >= 300) increment(communicationFailures);
     return status;
