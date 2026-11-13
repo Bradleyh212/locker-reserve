@@ -12,14 +12,22 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { DeviceReliabilityService } from './device-reliability.service';
 import { DevicesService } from './devices.service';
 
 @Controller('v1/admin/devices')
 @UseGuards(JwtAuthGuard)
 export class AdminDevicesController {
-  constructor(private readonly service: DevicesService) {}
+  constructor(
+    private readonly service: DevicesService,
+    private readonly reliability: DeviceReliabilityService,
+  ) {}
   @Get() list() {
     return this.service.list();
+  }
+  @Get(':id/reliability')
+  reliabilityHistory(@Param('id') id: string) {
+    return this.reliability.history(id);
   }
   @Post(':id/unlock-requests')
   @HttpCode(202)

@@ -61,3 +61,5 @@ Proposed terminal results: `OUTPUT_PULSE_COMPLETED`, `REJECTED`, `FAILED`, `UNKN
 400 malformed request; 401 invalid/revoked credential; 403 forbidden mapping/access; 409 conflicting command state; 429 rate limit with retry guidance; 5xx transient server failure. Expose no other device's data. Authentication failures stop command execution and require re-provisioning or controlled retry, not fallback to anonymous access.
 
 HTTPS certificate/hostname verification is required. Do not log bearer tokens, Wi-Fi secrets or customer access credentials. Firmware updates, credential provisioning and customer credential delivery are separate workflows, not supplied by these four endpoints.
+
+Device reliability diagnostics and recovery: [device-reliability.md](device-reliability.md).
