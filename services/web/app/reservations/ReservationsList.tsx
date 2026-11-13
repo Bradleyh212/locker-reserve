@@ -160,10 +160,7 @@ export default function ReservationsList({
 												) : null}
 
 												{canPay ? (
-													<PayReservationButton
-														reservationId={reservation.id}
-														onChanged={onChanged}
-													/>
+													<PayReservationButton />
 												) : null}
 											</div>
 										</td>

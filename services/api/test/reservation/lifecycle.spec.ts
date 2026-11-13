@@ -165,16 +165,18 @@ describe('availability and holds: HTTP + PostgreSQL + Redis', () => {
 describe('signed Stripe webhooks with mocked external payment creation', () => {
   it('creates a CAD intent for a valid hold with a stable retry idempotency key', async () => {
     const hold = await h.hold().expect(201);
+    await h.pay(hold.body.id).expect(201);
     for (let i = 0; i < 2; i++) {
       const intent = await h
         .http()
         .post('/public/payments/create-intent')
+        .set('Authorization', 'Bearer ' + h.proofs.get(hold.body.id))
         .send({ reservationId: hold.body.id })
         .expect(201);
       expect(intent.body).toMatchObject({
         amount: 500,
         currency: 'cad',
-        metadata: { reservationId: hold.body.id },
+        reservation: { id: hold.body.id },
       });
     }
     expect(h.intent).toHaveBeenNthCalledWith(
@@ -182,12 +184,13 @@ describe('signed Stripe webhooks with mocked external payment creation', () => {
       expect.objectContaining({ amount: 500 }),
       { idempotencyKey: `reservation:${hold.body.id}` },
     );
-    expect(h.intent.mock.calls[1][1]).toEqual(h.intent.mock.calls[0][1]);
+    expect(h.intent).toHaveBeenCalledTimes(1);
     expect((await reservation(hold.body.id)).status).toBe('HOLD');
   });
 
   it('accepts a signed success once, even with concurrent duplicate delivery', async () => {
     const hold = await h.hold().expect(201);
+    await h.pay(hold.body.id).expect(201);
     await h.availability().expect(200);
     const payload = h.event(hold.body.id);
     const results = await Promise.all([
@@ -204,6 +207,7 @@ describe('signed Stripe webhooks with mocked external payment creation', () => {
 
   it('records failure events without confirming; a later success confirms and a delayed failure does not undo it', async () => {
     const hold = await h.hold().expect(201);
+    await h.pay(hold.body.id).expect(201);
     await h
       .webhook(h.event(hold.body.id, 'payment_intent.payment_failed'))
       .expect(201);
@@ -218,6 +222,7 @@ describe('signed Stripe webhooks with mocked external payment creation', () => {
 
   it('rejects invalid/missing signatures and tampered payloads without recording events', async () => {
     const hold = await h.hold().expect(201);
+    await h.pay(hold.body.id).expect(201);
     const payload = h.event(hold.body.id);
     await h.webhook(payload, 'invalid').expect(400);
     const signature = h.stripe.webhooks.generateTestHeaderString({
@@ -240,6 +245,7 @@ describe('signed Stripe webhooks with mocked external payment creation', () => {
     'does not resurrect a %s hold on late payment',
     async (state) => {
       const hold = await h.hold().expect(201);
+    await h.pay(hold.body.id).expect(201);
       if (state === 'cancelled')
         await h
           .http()
@@ -251,9 +257,11 @@ describe('signed Stripe webhooks with mocked external payment creation', () => {
         if (state === 'expired') await h.expire();
       }
       const prior = (await reservation(hold.body.id)).status;
+      h.intent.mockClear();
       await h
         .http()
         .post('/public/payments/create-intent')
+        .set('Authorization', 'Bearer ' + h.proofs.get(hold.body.id))
         .send({ reservationId: hold.body.id })
         .expect(400);
       expect(h.intent).not.toHaveBeenCalled();
@@ -264,26 +272,19 @@ describe('signed Stripe webhooks with mocked external payment creation', () => {
   );
 
   it('rolls back event deduplication on handler error so the same delivery can be retried', async () => {
-    const payload = h.event('missing-reservation');
-    await h.webhook(payload).expect(404);
+    const hold = await h.hold().expect(201);
+    const payload = h.event(hold.body.id);
+    await h.webhook(payload).expect(503);
     expect(await h.db.paymentEvent.count()).toBe(0);
-    await h.db.reservation.create({
-      data: {
-        id: 'missing-reservation',
-        lockerId: h.lockerId,
-        status: 'HOLD',
-        startTime: new Date(h.now),
-        endTime: new Date(h.now + 3600000),
-        expiresAt: new Date(h.now + 600000),
-      },
-    });
+    await h.pay(hold.body.id).expect(201);
     await h.webhook(payload).expect(201);
-    expect((await reservation('missing-reservation')).status).toBe('CONFIRMED');
+    expect((await reservation(hold.body.id)).status).toBe('CONFIRMED');
     expect(await h.db.paymentEvent.count()).toBe(1);
   });
 
   it('does not update a confirmed reservation on another success event', async () => {
     const hold = await h.hold().expect(201);
+    await h.pay(hold.body.id).expect(201);
     await h.webhook(h.event(hold.body.id)).expect(201);
     const confirmed = await reservation(hold.body.id);
     h.advance(1000);
@@ -307,6 +308,7 @@ describe('signed Stripe webhooks with mocked external payment creation', () => {
 
   it('rejects stale Stripe signatures through the real timestamp tolerance check', async () => {
     const hold = await h.hold().expect(201);
+    await h.pay(hold.body.id).expect(201);
     const payload = h.event(hold.body.id);
     const signature = h.stripe.webhooks.generateTestHeaderString({
       payload,
@@ -319,6 +321,7 @@ describe('signed Stripe webhooks with mocked external payment creation', () => {
 
   it('keeps cancellation final when success and cancellation compete', async () => {
     const hold = await h.hold().expect(201);
+    await h.pay(hold.body.id).expect(201);
     const results = await Promise.all([
       h.webhook(h.event(hold.body.id)),
       h
@@ -528,6 +531,7 @@ it('runs availability → hold → signed payment → admin-authorized simulated
   const intent = await h
     .http()
     .post('/public/payments/create-intent')
+        .set('Authorization', 'Bearer ' + h.proofs.get(hold.body.id))
     .send({ reservationId: hold.body.id })
     .expect(201);
   const payload = h.event(hold.body.id);
@@ -564,7 +568,7 @@ it('runs availability → hold → signed payment → admin-authorized simulated
       where: { stripeEventId: JSON.parse(payload).id },
     }),
   ).toBe(1);
-  expect(intent.body.metadata.reservationId).toBe(hold.body.id);
+  expect(intent.body.reservation.id).toBe(hold.body.id);
   expect((await reservation(hold.body.id)).status).toBe('CONFIRMED');
   expect((await h.availability(range).expect(200)).body).toEqual([]);
   const activity = await h

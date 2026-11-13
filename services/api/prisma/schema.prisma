@@ -39,13 +39,37 @@ model Reservation {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  access CustomerReservationAccess?
+
   @@index([lockerId, startTime, endTime])
   @@index([status, expiresAt])
+}
+
+// Same credential/grant fields as customer-unlock; booking adds durable retry/payment state.
+model CustomerReservationAccess {
+  reservationId String @id
+  reservation Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  tokenHash String @unique
+  paymentIntentId String? @unique
+  paidAt DateTime?
+  revokedAt DateTime?
+  requestKey String? @unique
+  expectedAmount Int
+  currency String @default("cad")
+  paymentState String @default("UNPAID")
+  reconciliationReason String?
+  checkedAt DateTime?
+  @@index([paymentState])
 }
 
 model PaymentEvent {
   id            String   @id @default(uuid())
   stripeEventId String   @unique
+  reversedIntentId String?
+  outcome String?
+  reservationId String?
+  paymentIntentId String?
+  @@index([reversedIntentId])
   createdAt     DateTime @default(now())
 }
 
