@@ -32,6 +32,8 @@ export type Device = {
     maxPulseMs: number;
     cooldownUntil: string | null;
   };
+  unresolvedCommandCount?: number;
+  commandReconciliations?: { operatorId: string; acknowledgedAt: string }[];
   commands: {
     id: string;
     status: string;
@@ -40,6 +42,13 @@ export type Device = {
     reason: string;
     resultReason: string | null;
     completedAt: string | null;
+    reconciliation?: {
+      operatorId: string;
+      acknowledgedAt: string;
+      reason: string;
+      evidence: string;
+      originalResult: string | null;
+    } | null;
   }[];
 };
 

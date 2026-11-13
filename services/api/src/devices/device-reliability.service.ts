@@ -3,6 +3,7 @@ import { Interval } from '@nestjs/schedule';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { Diagnostics, freshnessMs, isFresh } from './device-health';
+import { unresolvedCommand } from './command-reconciliation';
 
 type Tx = Prisma.TransactionClient;
 @Injectable()
@@ -153,7 +154,7 @@ export class DeviceReliabilityService {
       const unresolved = await tx.deviceCommand.findMany({
         where: {
           deviceId: device.id,
-          OR: [{ result: null }, { result: 'UNKNOWN' }],
+          ...unresolvedCommand,
         },
       });
       for (const c of unresolved)
@@ -249,6 +250,7 @@ export class DeviceReliabilityService {
       const expired = await this.db.deviceCommand.findMany({
         where: {
           result: null,
+          reconciliation: { is: null },
           expiryObservedAt: null,
           expiresAt: { lte: new Date() },
         },
@@ -263,10 +265,12 @@ export class DeviceReliabilityService {
           await tx.$queryRaw`SELECT "id" FROM "DeviceCommand" WHERE "id" = ${c.id} FOR UPDATE`;
           const current = await tx.deviceCommand.findUnique({
             where: { id: c.id },
+            include: { reconciliation: true },
           });
           if (
             !current ||
             current.result ||
+            current.reconciliation ||
             current.expiryObservedAt ||
             current.expiresAt.getTime() > Date.now()
           )
@@ -303,9 +307,14 @@ export class DeviceReliabilityService {
       online: isFresh(device.lastSeen),
       firmwareVersion: device.firmwareVersion,
       unresolvedCommands: await this.db.deviceCommand.findMany({
-        where: { deviceId, OR: [{ result: null }, { result: 'UNKNOWN' }] },
+        where: { deviceId, ...unresolvedCommand },
         select: { id: true, issuedAt: true, expiresAt: true, result: true },
         orderBy: { issuedAt: 'desc' },
+        take: 50,
+      }),
+      acknowledgements: await this.db.deviceCommandReconciliation.findMany({
+        where: { deviceId },
+        orderBy: { acknowledgedAt: 'desc' },
         take: 50,
       }),
       health: await this.db.deviceHealth.findUnique({ where: { deviceId } }),

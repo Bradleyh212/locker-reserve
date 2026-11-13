@@ -118,8 +118,8 @@ export default function DeviceDrawer({
               )}
             </p>
             <p className={styles.caption}>
-              Solenoid shows the last device-reported output. Short pulses may occur
-              between updates. The latch position is unverified.
+              Solenoid shows the last device-reported output. Short pulses may
+              occur between updates. The latch position is unverified.
             </p>
           </section>
           <section className={styles.panel}>
@@ -174,6 +174,23 @@ export default function DeviceDrawer({
           )}
           <section className={styles.history}>
             <h3>Recent activity</h3>
+            {!!device.unresolvedCommandCount && (
+              <p role="status">
+                {device.unresolvedCommandCount} unresolved command(s) require
+                review, including history outside this recent list.
+              </p>
+            )}
+            {!!device.commandReconciliations?.length && (
+              <p>
+                Historical uncertainty acknowledged by{" "}
+                {device.commandReconciliations[0].operatorId} at{" "}
+                {formatDateTime(
+                  device.commandReconciliations[0].acknowledgedAt,
+                )}
+                . This is not proof of pulse completion. Current readiness is
+                checked separately.
+              </p>
+            )}
             {device.commands.length ? (
               <ol>
                 {device.commands.slice(0, expanded ? undefined : 3).map((c) => (
@@ -187,6 +204,30 @@ export default function DeviceDrawer({
                     </p>
                     {c.status === "EXPIRED_UNKNOWN" && (
                       <p>No result received. The pulse may have occurred.</p>
+                    )}
+                    {c.reconciliation && (
+                      <details>
+                        <summary>
+                          Operator acknowledgement · outcome preserved
+                        </summary>
+                        <p>
+                          {c.reconciliation.operatorId} ·{" "}
+                          {formatDateTime(c.reconciliation.acknowledgedAt)}
+                        </p>
+                        <p>
+                          Outcome at review:{" "}
+                          {c.reconciliation.originalResult
+                            ? statusLabel(c.reconciliation.originalResult)
+                            : "No device result"}
+                          .
+                        </p>
+                        <p>Reason: {c.reconciliation.reason}</p>
+                        <p>Evidence: {c.reconciliation.evidence}</p>
+                        <p>
+                          Later device reports do not replace this
+                          acknowledgement.
+                        </p>
+                      </details>
                     )}
                     {c.resultReason && (
                       <details>
