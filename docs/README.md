@@ -35,3 +35,7 @@ Reviewed against the repository on 2026-10-02. This update changes documentation
 ## Historical reference
 
 [Previous AWS deployment guide](legacy/aws-eks-deployment.md) and [previous AWS target diagram](diagrams/locker-reserve-aws-eks-architecture.mmd). They are not the recommended deployment path.
+
+- [Device reliability and diagnostics](embedded/device-reliability.md)
+
+- [Owned booking recovery and payment verification](booking-recovery.md)

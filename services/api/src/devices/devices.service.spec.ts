@@ -19,7 +19,11 @@ describe('device command boundaries', () => {
       $queryRaw: jest.fn(),
     };
     db.$transaction = async (fn: any) => fn(db);
-    service = new DevicesService(db);
+    service = new DevicesService(db, {
+      authenticationFailure: jest.fn(),
+      event: jest.fn(),
+      heartbeat: jest.fn().mockResolvedValue(true),
+    } as any);
     process.env.DEVICE_MAX_PULSE_MS = '200';
   });
   afterEach(() => delete process.env.DEVICE_MAX_PULSE_MS);
@@ -249,4 +253,20 @@ describe('device command boundaries', () => {
       }),
     ).rejects.toThrow();
   });
+  it('rechecks observation freshness after waiting for the device lock', async () => {
+    jest.useFakeTimers();
+    try {
+      ready();
+      const observedAtMs = Date.now() - 14000;
+      db.$queryRaw.mockImplementation(async () => { jest.advanceTimersByTime(1001); });
+      await expect(service.heartbeat('d', {
+        observedAtMs, doorState: 'CLOSED', outputState: 'INACTIVE',
+        firmwareVersion: 'test', actuationEnabled: true, maxPulseMs: 200,
+      })).rejects.toThrow('Door observation timestamp outside freshness window');
+      expect(db.lockerDevice.update).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
 });

@@ -54,14 +54,14 @@ An isolation lease refuses overlapping suites on the same Redis/database pair.
 - **Real:** AppModule, routes, guards, login cookie, Prisma transactions, database
   constraints, Redis reads/writes/invalidation, Stripe SDK webhook signature and
   timestamp checks, reservation handlers, device command handlers.
-- **Mocked:** Only outbound `stripe.paymentIntents.create`. Its inputs and stable
+- **Mocked:** Outbound `stripe.paymentIntents.create`, `retrieve` and `cancel`. Its inputs and stable
   reservation idempotency key are asserted. No payment is sent to Stripe.
 - **Simulated device:** A fixture token authenticates heartbeat, polling and result
   HTTP calls. Repeated delivery is the same command ID, not another activation.
   There is no separate delivery-ack endpoint on main; result posting acknowledges
   the simulated outcome.
 - **Controlled time:** Jest replaces `Date`, while socket/event-loop timers remain
-  real. Background reservation cron jobs are stopped in the test application.
+  real. Background cron jobs and reconciliation intervals are stopped in the test application.
   Tests advance time and explicitly invoke the actual expiration handler. The concurrent-hold regression holds the locker row until both requests are
   waiting in PostgreSQL, then releases it; a bounded database-state check replaces
   timing guesses. Tests
@@ -95,10 +95,10 @@ tests still check `/health` against PostgreSQL and Redis separately.
 
 ## Important gaps: this is not customer access authorization
 
-The current schema has no customer owner/access credential, no Payment entity,
-no persisted PaymentIntent-to-reservation link, and no reservation ID on a device
-command. `PaymentEvent` records the Stripe event ID; `CONFIRMED` can also be set by
-an admin without a payment. Therefore **CONFIRMED is not proof of payment**.
+Owned bookings now have a bearer-hash grant, a persisted PaymentIntent association,
+expected amount/currency and payment reconciliation state. See [booking recovery](../booking-recovery.md).
+`CONFIRMED` can still be set administratively without payment, so customer access
+must additionally require verified `paidAt`, a matching intent and no revocation.
 
 The existing `/v1/admin/devices/:id/unlock-requests` route authorizes a supervised
 admin action. It does not check a customer's paid reservation, ownership or access
@@ -110,8 +110,8 @@ feature and tests. This branch does not invent an insecure public unlock endpoin
 
 Signed failed events are currently recorded but do not introduce a payment-failed
 reservation state. A valid late success is acknowledged and recorded without
-reviving an expired/cancelled hold; automatic refunds and reconciliation are not
-implemented. There is no independent persistent payment ledger to assert.
+reviving an expired/cancelled hold; automatic refunds are not implemented. Late payments and cancellation retries
+are now durably tracked and reconciled as described in the booking recovery contract.
 
 `OUTPUT_PULSE_COMPLETED` means only the device reported its output pulse complete.
 It never proves a physical latch opened. Expired requests retain an unknown outcome

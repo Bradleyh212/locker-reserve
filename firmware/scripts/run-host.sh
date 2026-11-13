@@ -14,3 +14,15 @@ compiler=${CXX:-c++}
 "$compiler" -std=c++17 -Wall -Wextra -Werror -pedantic -I"$firmware_dir/include" \
   "$firmware_dir/test/device_protocol_test.cpp" -o "$firmware_dir/build/device-protocol-tests"
 "$firmware_dir/build/device-protocol-tests"
+
+"$compiler" -std=c++17 -Wall -Wextra -Werror -pedantic -I"$firmware_dir/include" \
+  "$firmware_dir/test/device_diagnostics_test.cpp" -o "$firmware_dir/build/device-diagnostics-tests"
+"$firmware_dir/build/device-diagnostics-tests"
+
+"$compiler" -std=c++17 -Wall -Wextra -Werror -pedantic -I"$firmware_dir/include" \
+  "$firmware_dir/test/door_heartbeat_test.cpp" -o "$firmware_dir/build/door-heartbeat-tests"
+"$firmware_dir/build/door-heartbeat-tests"
+
+"$compiler" -std=c++17 -Wall -Wextra -Werror -pedantic -I"$firmware_dir/include" \
+  "$firmware_dir/test/device_heartbeat_test.cpp" -o "$firmware_dir/build/device-heartbeat-tests"
+"$firmware_dir/build/device-heartbeat-tests"

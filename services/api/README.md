@@ -19,11 +19,13 @@ npm run start:dev
 
 - `/auth/login`, `/auth/logout`, `/auth/me`: admin httpOnly cookie authentication.
 - `/lockers`, `/reservations`, `/dashboard`: guarded administrative operations.
-- `/public/lockers/availability`, `/public/reservations/hold`, `/public/payments/create-intent`: public booking.
-- `/payments/create-intent`: guarded PaymentIntent creation.
+- `/public/lockers/availability`: anonymous availability. Booking creation/recovery/status and `/public/payments/create-intent` require a private reservation bearer proof; hold creation/recovery also use a UUID creation key.
+- `/payments/create-intent`: admin JWT plus reservation ownership proof; it does not disclose credentials based on an ID alone.
 - `/payments/webhook`: public signature-verified Stripe webhook; preserve raw request body through a proxy.
 
 There is no global `/api` prefix. Hold expiration runs in the API scheduler; Redis is a cache, not a hold queue. See [reservation lifecycle tests and remaining gaps](../../docs/testing/reservation-e2e.md) for concurrency, payment and access-control behavior.
+
+See [owned booking recovery and payment verification](../../docs/booking-recovery.md) for endpoint contracts, migration, legacy bookings and customer-unlock compatibility.
 
 ## Verification
 

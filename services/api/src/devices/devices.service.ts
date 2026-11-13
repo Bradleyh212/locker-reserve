@@ -7,6 +7,8 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { createHash } from 'crypto';
+import { DeviceReliabilityService } from './device-reliability.service';
+import { freshnessMs, isFresh, parseDiagnostics } from './device-health';
 import { PrismaService } from '../prisma/prisma.service';
 
 export const HARD_MAX_PULSE_MS = 5000;
@@ -26,18 +28,26 @@ function cooldownEnd(command: { issuedAt: Date; completedAt?: Date | null }) {
 
 @Injectable()
 export class DevicesService {
-  constructor(private readonly db: PrismaService) {}
+  constructor(
+    private readonly db: PrismaService,
+    private readonly reliability: DeviceReliabilityService,
+  ) {}
 
   async authenticate(header?: string) {
-    if (!header?.startsWith('Bearer ') || header.length > 512)
+    if (!header?.startsWith('Bearer ') || header.length > 512) {
+      await this.reliability.authenticationFailure();
       throw new UnauthorizedException();
+    }
     const tokenHash = createHash('sha256')
       .update(header.slice(7))
       .digest('hex');
     const device = await this.db.lockerDevice.findUnique({
       where: { tokenHash },
     });
-    if (!device?.enabled) throw new UnauthorizedException();
+    if (!device?.enabled) {
+      await this.reliability.authenticationFailure();
+      throw new UnauthorizedException();
+    }
     return device;
   }
 
@@ -64,7 +74,7 @@ export class DevicesService {
       serverLimit > 0 &&
       serverLimit <= HARD_MAX_PULSE_MS;
     return devices.map((d) => {
-      const online = !!d.lastSeen && now - d.lastSeen.getTime() < ONLINE_MS;
+      const online = isFresh(d.lastSeen, now);
       const latest = d.commands[0];
       const cooldownUntil = latest
         ? cooldownEnd(latest)
@@ -121,18 +131,39 @@ export class DevicesService {
     ) {
       throw new BadRequestException('Invalid heartbeat');
     }
-    await this.db.lockerDevice.update({
-      where: { id },
-      data: {
-        lastSeen: new Date(),
-        doorState: b.doorState,
-        outputState: b.outputState,
-        firmwareVersion: b.firmwareVersion,
-        actuationEnabled: b.actuationEnabled,
-        maxPulseMs: b.maxPulseMs,
-      },
+    const diagnostics = parseDiagnostics(b.diagnostics);
+    return this.db.$transaction(async (tx) => {
+      // Validate both observation clocks under the shared device lock before
+      // recording health events or invalidating commands for a new boot.
+      await tx.$queryRaw`SELECT "id" FROM "LockerDevice" WHERE "id" = ${id} FOR UPDATE`;
+      const device = await tx.lockerDevice.findUnique({ where: { id } });
+      if (!device?.enabled) throw new UnauthorizedException();
+      const receivedAt = Date.now();
+      const sampled = b.observedAtMs;
+      const stamped = sampled !== undefined;
+      if (stamped && (!Number.isSafeInteger(sampled) || sampled > receivedAt + 2000 ||
+          sampled <= receivedAt - freshnessMs())) {
+        throw new BadRequestException('Door observation timestamp outside freshness window');
+      }
+      const observed = stamped ? new Date(sampled) : null;
+      if (device.doorObservedAt && (!observed || observed <= device.doorObservedAt))
+        return { accepted: false, ignored: true };
+      if (!(await this.reliability.heartbeat(tx, device, diagnostics)))
+        return { accepted: false, ignored: true };
+      await tx.lockerDevice.update({
+        where: { id },
+        data: {
+          doorObservedAt: observed,
+          lastSeen: new Date(stamped ? Math.min(receivedAt, sampled) : receivedAt),
+          doorState: b.doorState,
+          outputState: b.outputState,
+          firmwareVersion: b.firmwareVersion,
+          actuationEnabled: b.actuationEnabled,
+          maxPulseMs: b.maxPulseMs,
+        },
+      });
+      return { accepted: true };
     });
-    return { accepted: true };
   }
 
   async enqueue(id: string, b: any, actor: string) {
@@ -172,7 +203,7 @@ export class DevicesService {
         );
       if (
         !d.lastSeen ||
-        Date.now() - d.lastSeen.getTime() >= ONLINE_MS ||
+        !isFresh(d.lastSeen) ||
         d.outputState !== 'INACTIVE' ||
         d.doorState !== 'CLOSED'
       )
@@ -212,51 +243,67 @@ export class DevicesService {
   }
 
   async next(id: string) {
-    const d = await this.db.lockerDevice.findUnique({
-      where: { id },
-      include: { locker: true },
-    });
-    if (
-      !d?.enabled ||
-      !d.locker.isActive ||
-      !d.actuationEnabled ||
-      !d.lastSeen ||
-      Date.now() - d.lastSeen.getTime() >= ONLINE_MS ||
-      d.doorState !== 'CLOSED' ||
-      d.outputState !== 'INACTIVE'
-    )
-      return null;
-    const c = await this.db.deviceCommand.findFirst({
-      where: {
+    return this.db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "LockerDevice" WHERE "id" = ${id} FOR UPDATE`;
+      const d = await tx.lockerDevice.findUnique({
+        where: { id },
+        include: { locker: true },
+      });
+      if (
+        !d?.enabled ||
+        !d.locker.isActive ||
+        !d.actuationEnabled ||
+        !d.lastSeen ||
+        !isFresh(d.lastSeen) ||
+        d.doorState !== 'CLOSED' ||
+        d.outputState !== 'INACTIVE'
+      )
+        return null;
+      const c = await tx.deviceCommand.findFirst({
+        where: {
+          deviceId: id,
+          result: null,
+          expiresAt: { gt: new Date() },
+          lockerId: d.lockerId,
+        },
+        orderBy: { issuedAt: 'asc' },
+      });
+      if (!c) return null;
+      const limit = Number(process.env.DEVICE_MAX_PULSE_MS ?? 0);
+      if (
+        !Number.isInteger(limit) ||
+        limit <= 0 ||
+        limit > HARD_MAX_PULSE_MS ||
+        !Number.isInteger(c.pulseMs) ||
+        c.pulseMs <= 0 ||
+        c.pulseMs > limit ||
+        c.pulseMs > d.maxPulseMs
+      )
+        return null;
+      if (!c.deliveredAt) {
+        await tx.deviceCommand.update({
+          where: { id: c.id },
+          data: { deliveredAt: new Date() },
+        });
+        await this.reliability.event(
+          tx,
+          id,
+          'COMMAND_DELIVERY_ATTEMPTED',
+          `delivery:${c.id}`,
+          { commandId: c.id },
+        );
+      }
+      return {
+        protocolVersion: 1,
+        commandId: c.id,
         deviceId: id,
-        result: null,
-        expiresAt: { gt: new Date() },
-        lockerId: d.lockerId,
-      },
-      orderBy: { issuedAt: 'asc' },
+        lockerId: c.lockerId,
+        type: 'UNLOCK_PULSE',
+        issuedAt: c.issuedAt,
+        expiresAt: c.expiresAt,
+        pulseMs: c.pulseMs,
+      };
     });
-    if (!c) return null;
-    const limit = Number(process.env.DEVICE_MAX_PULSE_MS ?? 0);
-    if (
-      !Number.isInteger(limit) ||
-      limit <= 0 ||
-      limit > HARD_MAX_PULSE_MS ||
-      !Number.isInteger(c.pulseMs) ||
-      c.pulseMs <= 0 ||
-      c.pulseMs > limit ||
-      c.pulseMs > d.maxPulseMs
-    )
-      return null;
-    return {
-      protocolVersion: 1,
-      commandId: c.id,
-      deviceId: id,
-      lockerId: c.lockerId,
-      type: 'UNLOCK_PULSE',
-      issuedAt: c.issuedAt,
-      expiresAt: c.expiresAt,
-      pulseMs: c.pulseMs,
-    };
   }
 
   async result(id: string, commandId: string, b: any) {
@@ -268,6 +315,8 @@ export class DevicesService {
     )
       throw new BadRequestException('Invalid result');
     return this.db.$transaction(async (tx) => {
+      // Match heartbeat/delivery lock order. Event foreign keys also lock the device.
+      await tx.$queryRaw`SELECT "id" FROM "LockerDevice" WHERE "id" = ${id} FOR UPDATE`;
       await tx.$queryRaw`SELECT "id" FROM "DeviceCommand" WHERE "id" = ${commandId} FOR UPDATE`;
       const c = await tx.deviceCommand.findUnique({ where: { id: commandId } });
       if (!c || c.deviceId !== id) throw new NotFoundException();
@@ -284,6 +333,22 @@ export class DevicesService {
           completedAt: new Date(),
         },
       });
+      await this.reliability.event(
+        tx,
+        id,
+        b.result === 'UNKNOWN'
+          ? 'COMMAND_OUTCOME_UNKNOWN'
+          : 'COMMAND_RESULT_RECEIVED',
+        `result:${commandId}`,
+        {
+          commandId,
+          severity:
+            b.result === 'UNKNOWN' || b.result === 'FAILED'
+              ? 'WARNING'
+              : 'INFO',
+          details: { result: b.result },
+        },
+      );
       return { accepted: true };
     });
   }

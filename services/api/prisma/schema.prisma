@@ -39,13 +39,37 @@ model Reservation {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  access CustomerReservationAccess?
+
   @@index([lockerId, startTime, endTime])
   @@index([status, expiresAt])
+}
+
+// Same credential/grant fields as customer-unlock; booking adds durable retry/payment state.
+model CustomerReservationAccess {
+  reservationId String @id
+  reservation Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  tokenHash String @unique
+  paymentIntentId String? @unique
+  paidAt DateTime?
+  revokedAt DateTime?
+  requestKey String? @unique
+  expectedAmount Int
+  currency String @default("cad")
+  paymentState String @default("UNPAID")
+  reconciliationReason String?
+  checkedAt DateTime?
+  @@index([paymentState])
 }
 
 model PaymentEvent {
   id            String   @id @default(uuid())
   stripeEventId String   @unique
+  reversedIntentId String?
+  outcome String?
+  reservationId String?
+  paymentIntentId String?
+  @@index([reversedIntentId])
   createdAt     DateTime @default(now())
 }
 
@@ -57,12 +81,15 @@ model LockerDevice {
   tokenHash String @unique
   enabled Boolean @default(true)
   lastSeen DateTime?
+  doorObservedAt DateTime?
   doorState String @default("UNKNOWN")
   outputState String @default("INACTIVE")
   firmwareVersion String @default("unknown")
   actuationEnabled Boolean @default(false)
   maxPulseMs Int @default(0)
   commands DeviceCommand[]
+  health DeviceHealth?
+  events DeviceEvent[]
 }
 
 model DeviceCommand {
@@ -78,5 +105,38 @@ model DeviceCommand {
   result String?
   resultReason String?
   completedAt DateTime?
+  deliveredAt DateTime?
+  expiryObservedAt DateTime?
   @@index([deviceId, issuedAt])
+}
+
+// Latest authenticated diagnostics; device uptime is not wall-clock time.
+model DeviceHealth {
+  deviceId String @id
+  device LockerDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  offline Boolean @default(false)
+  bootId String?
+  uptimeMs Float?
+  resetReason String?
+  bootObservedAt DateTime?
+  wifiDisconnects Int @default(0)
+  communicationFailures Int @default(0)
+  updatedAt DateTime @updatedAt
+}
+
+model DeviceEvent {
+  id String @id @default(uuid())
+  deviceId String?
+  device LockerDevice? @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  type String
+  severity String
+  timestamp DateTime @default(now())
+  commandId String?
+  uptimeMs Float?
+  resetReason String?
+  details Json?
+  dedupeKey String @unique
+  occurrences Int @default(1)
+  @@index([deviceId, timestamp, id])
+  @@index([timestamp])
 }

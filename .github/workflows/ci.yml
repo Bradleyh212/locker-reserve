@@ -110,6 +110,11 @@ jobs:
         run: npx --no-install tsc --noEmit
       - run: npm run build
 
+      - name: Install test browser
+        run: npx --no-install playwright install --with-deps chromium
+      - name: Dashboard browser tests (simulated API)
+        run: npm run test:web
+
   firmware:
     name: firmware
     runs-on: ubuntu-24.04
