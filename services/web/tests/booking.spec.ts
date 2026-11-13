@@ -172,7 +172,9 @@ test("recovers a committed hold after its creation response is lost, without ano
   state.lost = true;
   await choose(page);
   await page.getByRole("button", { name: "Create hold", exact: true }).click();
-  await expect(page.getByRole("alert")).toBeVisible();
+  await expect(
+    page.getByRole("alert").filter({ hasText: /^Failed to fetch$/ }),
+  ).toBeVisible();
   expect(state.holdPosts).toBe(1);
   await page.reload();
   await expect(
