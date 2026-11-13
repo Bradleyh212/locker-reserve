@@ -63,3 +63,7 @@ Proposed terminal results: `OUTPUT_PULSE_COMPLETED`, `REJECTED`, `FAILED`, `UNKN
 HTTPS certificate/hostname verification is required. Do not log bearer tokens, Wi-Fi secrets or customer access credentials. Firmware updates, credential provisioning and customer credential delivery are separate workflows, not supplied by these four endpoints.
 
 Device reliability diagnostics and recovery: [device-reliability.md](device-reliability.md).
+
+## Audited acknowledgement of unknown commands
+
+Administrators can acknowledge an expired uncertain outcome after reviewing the physical locker's safe condition. The command result and events are preserved, and no unlock is requested. See [command reconciliation](command-reconciliation.md) for the endpoint, evidence requirements, late-report semantics and unchanged safety gates.

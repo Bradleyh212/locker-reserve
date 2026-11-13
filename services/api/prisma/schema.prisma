@@ -88,6 +88,7 @@ model LockerDevice {
   actuationEnabled Boolean @default(false)
   maxPulseMs Int @default(0)
   commands DeviceCommand[]
+  commandReconciliations DeviceCommandReconciliation[]
   health DeviceHealth?
   events DeviceEvent[]
 }
@@ -107,6 +108,7 @@ model DeviceCommand {
   completedAt DateTime?
   deliveredAt DateTime?
   expiryObservedAt DateTime?
+  reconciliation DeviceCommandReconciliation?
   @@index([deviceId, issuedAt])
 }
 
@@ -139,4 +141,21 @@ model DeviceEvent {
   occurrences Int @default(1)
   @@index([deviceId, timestamp, id])
   @@index([timestamp])
+}
+
+// An operator acknowledges uncertainty; this is never device execution proof.
+model DeviceCommandReconciliation {
+  commandId String @id
+  command DeviceCommand @relation(fields: [commandId], references: [id], onDelete: Cascade)
+  deviceId String
+  device LockerDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  operatorId String
+  acknowledgedAt DateTime @default(now())
+  reason String
+  evidence String
+  physicalSafetyConfirmed Boolean
+  originalResult String?
+  originalResultReason String?
+  originalCompletedAt DateTime?
+  @@index([deviceId, acknowledgedAt])
 }

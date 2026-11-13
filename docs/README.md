@@ -39,3 +39,5 @@ Reviewed against the repository on 2026-10-02. This update changes documentation
 - [Device reliability and diagnostics](embedded/device-reliability.md)
 
 - [Owned booking recovery and payment verification](booking-recovery.md)
+
+- [Unknown device command reconciliation](embedded/command-reconciliation.md) — audited physical safety review, historical uncertainty and independent current readiness.

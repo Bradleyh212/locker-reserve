@@ -779,3 +779,69 @@ for (const outputState of ["INACTIVE", "ACTIVE", "UNKNOWN"]) {
     expect(s.posts).toEqual([]);
   });
 }
+
+test("keeps historical outcome, operator acknowledgement and current readiness distinct without posting commands", async ({
+  page,
+}) => {
+  const device = {
+    ...fixture(1),
+    unresolvedCommandCount: 1,
+    commandReconciliations: [
+      { operatorId: "reviewing-admin", acknowledgedAt: when },
+    ],
+    unlock: {
+      ...fixture(1).unlock,
+      allowed: false,
+      blockedReason:
+        "Waiting for an accepted heartbeat after operator acknowledgement",
+    },
+    commands: fixture(1).commands.map((command, i) => ({
+      ...command,
+      status: i === 0 ? "EXPIRED_UNKNOWN" : command.status,
+      reconciliation:
+        i === 0
+          ? {
+              operatorId: "reviewing-admin",
+              acknowledgedAt: when,
+              reason: "Historical uncertainty reviewed",
+              evidence: "Physical safe condition reviewed by the operator",
+              originalResult: null,
+            }
+          : null,
+    })),
+  };
+  const state = await setup(page, [device]);
+  await page.goto("/lockers");
+  await manage(page).click();
+  const dialog = page.getByRole("dialog");
+  await expect(
+    dialog.getByText(/1 unresolved command\(s\) require review/),
+  ).toBeVisible();
+  await expect(
+    dialog.getByText(/This is not proof of pulse completion/),
+  ).toBeVisible();
+  await expect(
+    dialog.getByText(
+      "Waiting for an accepted heartbeat after operator acknowledgement",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await dialog
+    .getByText("Operator acknowledgement · outcome preserved", { exact: true })
+    .click();
+  await expect(
+    dialog.getByText("Outcome at review: No device result.", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    dialog.getByText("Reason: Historical uncertainty reviewed", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    dialog.getByText(
+      "Evidence: Physical safe condition reviewed by the operator",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  expect(state.posts).toEqual([]);
+});

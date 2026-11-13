@@ -29,6 +29,16 @@ export class AdminDevicesController {
   reliabilityHistory(@Param('id') id: string) {
     return this.reliability.history(id);
   }
+  @Post(':id/commands/:commandId/reconciliation')
+  @HttpCode(200)
+  reconcile(
+    @Param('id') id: string,
+    @Param('commandId') commandId: string,
+    @Body() body: unknown,
+    @Req() req: { admin?: { sub?: string; role?: string } },
+  ) {
+    return this.service.reconcile(id, commandId, body, req.admin);
+  }
   @Post(':id/unlock-requests')
   @HttpCode(202)
   unlock(

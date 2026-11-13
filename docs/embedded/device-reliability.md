@@ -63,7 +63,8 @@ Events include server timestamp, severity, device ID where known, optional comma
 - `online`, `lastHeartbeat`, `firmwareVersion`
 - `health` with last reported boot, uptime, reset reason, counters and boot observation time
 - latest 50 `events`, newest first
-- latest 50 `unresolvedCommands`
+- latest 50 unresolved, unacknowledged `unresolvedCommands`
+- latest 50 operator `acknowledgements`, separate from device outcomes
 
 `health.offline` is the persisted sweep state; top-level `online` is the current timestamp-based answer. Uptime is the last report, not a live timer. `bootObservedAt` is when the server first saw that boot, not the exact reset time. Existing `/v1/admin/devices` continues to enforce the same guards and display unknown command outcomes. The merged dashboard is preserved; this branch adds no new reliability view.
 
@@ -71,7 +72,7 @@ Events include server timestamp, severity, device ID where known, optional comma
 
 Heartbeat, enqueue and delivery share a per-device row lock. On observing a new boot, outstanding commands are expired before the new heartbeat is accepted, including the first diagnostic boot. They are never converted to successful/rejected outcomes by inference. Result and expiry handling lock the device first and then the command, matching heartbeat/delivery lock order and avoiding deadlocks during concurrent recovery. Expiry sweeps process the oldest unobserved deadlines first.
 
-Updated firmware waits for an accepted heartbeat before polling for new commands at boot or after a Wi-Fi disconnect. Its existing NVS journal still persists consumption before GPIO activation, prevents physical re-execution on duplicate command delivery and reports UNKNOWN if interrupted. Pending journal results can still be submitted. A late result can resolve an expired command, but a conflicting final result is rejected. UNKNOWN and pending commands continue blocking new unlocks; no automatic retry/reconciliation is added.
+Updated firmware waits for an accepted heartbeat before polling for new commands at boot or after a Wi-Fi disconnect. Its existing NVS journal still persists consumption before GPIO activation, prevents physical re-execution on duplicate command delivery and reports UNKNOWN if interrupted. Pending journal results can still be submitted. A late result can resolve an expired command, but a conflicting final result is rejected. UNKNOWN and pending commands continue blocking new unlocks until an explicit audited operator acknowledgement, where appropriate. See [command reconciliation](command-reconciliation.md); no automatic retry or acknowledgement is added.
 
 GPIO26 remains LOW at boot, GPIO27 retains INPUT_PULLUP/debounce, and the 5000 ms ceiling and CLOSED-only unlock rules remain. Existing main cooldown stays unchanged, including its non-production, opt-in five-second bench cooldown measured from completion reporting. Production retains the existing thirty-second cooldown behavior.
 

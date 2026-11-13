@@ -7,6 +7,10 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { createHash } from 'crypto';
+import {
+  reconciliationInput,
+  unresolvedCommand,
+} from './command-reconciliation';
 import { DeviceReliabilityService } from './device-reliability.service';
 import { freshnessMs, isFresh, parseDiagnostics } from './device-health';
 import { PrismaService } from '../prisma/prisma.service';
@@ -19,8 +23,11 @@ const outcomes = ['OUTPUT_PULSE_COMPLETED', 'REJECTED', 'FAILED', 'UNKNOWN'];
 
 // Count bench rest time from the server's receipt of the device result.
 function cooldownEnd(command: { issuedAt: Date; completedAt?: Date | null }) {
-  if (process.env.NODE_ENV !== 'production' &&
-      process.env.DEVICE_BENCH_SHORT_COOLDOWN === '1' && command.completedAt) {
+  if (
+    process.env.NODE_ENV !== 'production' &&
+    process.env.DEVICE_BENCH_SHORT_COOLDOWN === '1' &&
+    command.completedAt
+  ) {
     return command.completedAt.getTime() + 5000;
   }
   return command.issuedAt.getTime() + COOLDOWN_MS;
@@ -64,7 +71,16 @@ export class DevicesService {
         actuationEnabled: true,
         maxPulseMs: true,
         locker: { select: { code: true, isActive: true } },
-        commands: { orderBy: { issuedAt: 'desc' }, take: 5 },
+        commands: {
+          orderBy: { issuedAt: 'desc' },
+          take: 5,
+          include: { reconciliation: true },
+        },
+        _count: { select: { commands: { where: unresolvedCommand } } },
+        commandReconciliations: {
+          orderBy: { acknowledgedAt: 'desc' },
+          take: 1,
+        },
       },
     });
     const now = Date.now();
@@ -76,9 +92,10 @@ export class DevicesService {
     return devices.map((d) => {
       const online = isFresh(d.lastSeen, now);
       const latest = d.commands[0];
-      const cooldownUntil = latest
-        ? cooldownEnd(latest)
-        : 0;
+      const review = d.commandReconciliations[0];
+      const waitingForHeartbeat =
+        !!review && (!d.lastSeen || d.lastSeen <= review.acknowledgedAt);
+      const cooldownUntil = latest ? cooldownEnd(latest) : 0;
       const blockedReason = !d.enabled
         ? 'Device disabled'
         : !d.locker.isActive
@@ -93,13 +110,17 @@ export class DevicesService {
                   ? 'Physical activation disabled on device'
                   : d.outputState !== 'INACTIVE'
                     ? 'Output is not inactive'
-                    : latest && (!latest.result || latest.result === 'UNKNOWN')
+                    : d._count.commands > 0
                       ? 'Previous command pending or unresolved; inspect before retrying'
-                      : cooldownUntil > now
-                        ? 'Waiting for cooldown'
-                        : null;
+                      : waitingForHeartbeat
+                        ? 'Waiting for an accepted heartbeat after operator acknowledgement'
+                        : cooldownUntil > now
+                          ? 'Waiting for cooldown'
+                          : null;
+      const { _count, ...device } = d;
       return {
-        ...d,
+        ...device,
+        unresolvedCommandCount: _count.commands,
         online,
         unlock: {
           allowed: blockedReason === null,
@@ -141,12 +162,21 @@ export class DevicesService {
       const receivedAt = Date.now();
       const sampled = b.observedAtMs;
       const stamped = sampled !== undefined;
-      if (stamped && (!Number.isSafeInteger(sampled) || sampled > receivedAt + 2000 ||
-          sampled <= receivedAt - freshnessMs())) {
-        throw new BadRequestException('Door observation timestamp outside freshness window');
+      if (
+        stamped &&
+        (!Number.isSafeInteger(sampled) ||
+          sampled > receivedAt + 2000 ||
+          sampled <= receivedAt - freshnessMs())
+      ) {
+        throw new BadRequestException(
+          'Door observation timestamp outside freshness window',
+        );
       }
       const observed = stamped ? new Date(sampled) : null;
-      if (device.doorObservedAt && (!observed || observed <= device.doorObservedAt))
+      if (
+        device.doorObservedAt &&
+        (!observed || observed <= device.doorObservedAt)
+      )
         return { accepted: false, ignored: true };
       if (!(await this.reliability.heartbeat(tx, device, diagnostics)))
         return { accepted: false, ignored: true };
@@ -154,7 +184,9 @@ export class DevicesService {
         where: { id },
         data: {
           doorObservedAt: observed,
-          lastSeen: new Date(stamped ? Math.min(receivedAt, sampled) : receivedAt),
+          lastSeen: new Date(
+            stamped ? Math.min(receivedAt, sampled) : receivedAt,
+          ),
           doorState: b.doorState,
           outputState: b.outputState,
           firmwareVersion: b.firmwareVersion,
@@ -189,7 +221,13 @@ export class DevicesService {
       await tx.$queryRaw`SELECT "id" FROM "LockerDevice" WHERE "id" = ${id} FOR UPDATE`;
       const d = await tx.lockerDevice.findUnique({
         where: { id },
-        include: { locker: true },
+        include: {
+          locker: true,
+          commandReconciliations: {
+            orderBy: { acknowledgedAt: 'desc' },
+            take: 1,
+          },
+        },
       });
       if (!d) throw new NotFoundException();
       if (
@@ -214,12 +252,15 @@ export class DevicesService {
         where: { deviceId: id },
         orderBy: { issuedAt: 'desc' },
       });
-      if (
-        recent &&
-        (Date.now() < cooldownEnd(recent) ||
-          !recent.result ||
-          recent.result === 'UNKNOWN')
-      ) {
+      const unresolved = await tx.deviceCommand.count({
+        where: { deviceId: id, ...unresolvedCommand },
+      });
+      const review = d.commandReconciliations[0];
+      if (review && (!d.lastSeen || d.lastSeen <= review.acknowledgedAt))
+        throw new ConflictException(
+          'Waiting for an accepted heartbeat after operator acknowledgement',
+        );
+      if (unresolved || (recent && Date.now() < cooldownEnd(recent))) {
         throw new ConflictException(
           'Cooldown or unresolved command; inspect the device before another request',
         );
@@ -247,7 +288,13 @@ export class DevicesService {
       await tx.$queryRaw`SELECT "id" FROM "LockerDevice" WHERE "id" = ${id} FOR UPDATE`;
       const d = await tx.lockerDevice.findUnique({
         where: { id },
-        include: { locker: true },
+        include: {
+          locker: true,
+          commandReconciliations: {
+            orderBy: { acknowledgedAt: 'desc' },
+            take: 1,
+          },
+        },
       });
       if (
         !d?.enabled ||
@@ -263,12 +310,21 @@ export class DevicesService {
         where: {
           deviceId: id,
           result: null,
+          reconciliation: { is: null },
           expiresAt: { gt: new Date() },
           lockerId: d.lockerId,
         },
         orderBy: { issuedAt: 'asc' },
       });
       if (!c) return null;
+      const review = d.commandReconciliations[0];
+      if (
+        (review && (!d.lastSeen || d.lastSeen <= review.acknowledgedAt)) ||
+        (await tx.deviceCommand.count({
+          where: { deviceId: id, id: { not: c.id }, ...unresolvedCommand },
+        }))
+      )
+        return null;
       const limit = Number(process.env.DEVICE_MAX_PULSE_MS ?? 0);
       if (
         !Number.isInteger(limit) ||
@@ -306,6 +362,91 @@ export class DevicesService {
     });
   }
 
+  async reconcile(
+    id: string,
+    commandId: string,
+    body: unknown,
+    actor?: { sub?: string; role?: string },
+  ) {
+    const input = reconciliationInput(body, actor);
+    return this.db.$transaction(async (tx) => {
+      // Same lock order as enqueue, delivery, heartbeat, results and the expiry sweep.
+      await tx.$queryRaw`SELECT "id" FROM "LockerDevice" WHERE "id" = ${id} FOR UPDATE`;
+      await tx.$queryRaw`SELECT "id" FROM "DeviceCommand" WHERE "id" = ${commandId} FOR UPDATE`;
+      const command = await tx.deviceCommand.findUnique({
+        where: { id: commandId },
+        include: { reconciliation: true },
+      });
+      if (!command || command.deviceId !== id) throw new NotFoundException();
+      if (command.reconciliation) {
+        const prior = command.reconciliation;
+        if (
+          prior.operatorId !== input.operatorId ||
+          prior.reason !== input.reason ||
+          prior.evidence !== input.evidence
+        )
+          throw new ConflictException(
+            'An immutable acknowledgement already exists',
+          );
+        return {
+          acknowledgement: prior,
+          commandOutcome: command.result,
+          unlockRequested: false,
+        };
+      }
+      if (
+        command.expiresAt.getTime() > Date.now() ||
+        (command.result !== null && command.result !== 'UNKNOWN')
+      )
+        throw new ConflictException(
+          'Only expired commands with an unknown outcome may be acknowledged',
+        );
+      if (
+        await tx.deviceCommand.findFirst({
+          where: {
+            deviceId: id,
+            id: { not: commandId },
+            result: null,
+            expiresAt: { gt: new Date() },
+          },
+        })
+      )
+        throw new ConflictException(
+          'A live command exists; wait for its outcome or expiry before review',
+        );
+      const acknowledgement = await tx.deviceCommandReconciliation.create({
+        data: {
+          commandId,
+          deviceId: id,
+          ...input,
+          originalResult: command.result,
+          originalResultReason: command.resultReason,
+          originalCompletedAt: command.completedAt,
+        },
+      });
+      await this.reliability.event(
+        tx,
+        id,
+        'COMMAND_UNCERTAINTY_ACKNOWLEDGED',
+        `acknowledged:${commandId}`,
+        {
+          commandId,
+          severity: 'WARNING',
+          details: {
+            operatorId: input.operatorId,
+            acknowledgedAt: acknowledgement.acknowledgedAt.toISOString(),
+            source: 'OPERATOR_REVIEW',
+          },
+        },
+      );
+      return {
+        acknowledgement,
+        commandOutcome: command.result,
+        unlockRequested: false,
+      };
+    });
+  }
+
   async result(id: string, commandId: string, b: any) {
     if (
       !b ||
@@ -318,7 +459,10 @@ export class DevicesService {
       // Match heartbeat/delivery lock order. Event foreign keys also lock the device.
       await tx.$queryRaw`SELECT "id" FROM "LockerDevice" WHERE "id" = ${id} FOR UPDATE`;
       await tx.$queryRaw`SELECT "id" FROM "DeviceCommand" WHERE "id" = ${commandId} FOR UPDATE`;
-      const c = await tx.deviceCommand.findUnique({ where: { id: commandId } });
+      const c = await tx.deviceCommand.findUnique({
+        where: { id: commandId },
+        include: { reconciliation: true },
+      });
       if (!c || c.deviceId !== id) throw new NotFoundException();
       if (c.result) {
         if (c.result !== b.result || c.resultReason !== b.reason)
@@ -336,9 +480,11 @@ export class DevicesService {
       await this.reliability.event(
         tx,
         id,
-        b.result === 'UNKNOWN'
-          ? 'COMMAND_OUTCOME_UNKNOWN'
-          : 'COMMAND_RESULT_RECEIVED',
+        c.reconciliation
+          ? 'COMMAND_LATE_RESULT_AFTER_RECONCILIATION'
+          : b.result === 'UNKNOWN'
+            ? 'COMMAND_OUTCOME_UNKNOWN'
+            : 'COMMAND_RESULT_RECEIVED',
         `result:${commandId}`,
         {
           commandId,
@@ -346,7 +492,12 @@ export class DevicesService {
             b.result === 'UNKNOWN' || b.result === 'FAILED'
               ? 'WARNING'
               : 'INFO',
-          details: { result: b.result },
+          details: {
+            result: b.result,
+            ...(c.reconciliation && {
+              acknowledgedAt: c.reconciliation.acknowledgedAt.toISOString(),
+            }),
+          },
         },
       );
       return { accepted: true };
