@@ -1,7 +1,7 @@
 import { Test } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
-import { createHash, randomUUID } from 'crypto';
+import { createHash, randomUUID, randomBytes } from 'crypto';
 import { hashSync } from 'bcryptjs';
 import { createClient } from 'redis';
 import request from 'supertest';
@@ -23,6 +23,10 @@ export class Harness {
   lockerId: string;
   deviceId = 'reservation-e2e-simulated-device';
   token = 'reservation-e2e-simulated-device-token';
+  proofs = new Map<string, string>();
+  intents = new Map<string, any>();
+  retrieve: jest.SpyInstance;
+  cancelIntent: jest.SpyInstance;
   intent: jest.SpyInstance;
   stripe: StripeClient;
   now: number;
@@ -55,20 +59,40 @@ export class Harness {
     ).stripe;
     this.intent = jest
       .spyOn(this.stripe.paymentIntents, 'create')
-      .mockImplementation(
-        async (params: any) =>
-          ({
-            id: `pi_e2e_${params.metadata.reservationId}`,
-            object: 'payment_intent',
-            client_secret: 'test_fixture_client_secret',
-            ...params,
-          }) as any,
-      );
+      .mockImplementation(async (params: any) => {
+        const id = `pi_e2e_${params.metadata.reservationId}`;
+        const intent = this.intents.get(id) ?? {
+          id,
+          object: 'payment_intent',
+          client_secret: 'test_fixture_client_secret',
+          status: 'requires_payment_method',
+          amount_received: 0,
+          ...params,
+        };
+        this.intents.set(id, intent);
+        return intent;
+      });
+    this.retrieve = jest
+      .spyOn(this.stripe.paymentIntents, 'retrieve')
+      .mockImplementation(async (id: string) => {
+        const intent = this.intents.get(id);
+        if (!intent) throw new Error('Missing fixture intent');
+        return intent;
+      });
+    this.cancelIntent = jest
+      .spyOn(this.stripe.paymentIntents, 'cancel')
+      .mockImplementation(async (id: string) => {
+        const intent = this.intents.get(id);
+        intent.status = 'canceled';
+        return intent;
+      });
     this.db = this.app.get(PrismaService);
     await this.app.listen(0, '127.0.0.1');
     // Expiration is invoked explicitly after advancing Date; no cron races or sleeps.
     for (const job of this.app.get(SchedulerRegistry).getCronJobs().values())
       job.stop();
+    for (const id of this.app.get(SchedulerRegistry).getIntervals())
+      this.app.get(SchedulerRegistry).deleteInterval(id);
   }
   async reset() {
     if (!this.ownsLease) throw new Error('Test isolation lease not acquired');
@@ -97,6 +121,10 @@ export class Harness {
     const cacheKeys = await this.redis.keys('lockers:*');
     if (cacheKeys.length) await this.redis.del(cacheKeys);
     this.intent.mockClear();
+    this.retrieve.mockClear();
+    this.cancelIntent.mockClear();
+    this.intents.clear();
+    this.proofs.clear();
     this.eventNumber = 0;
     this.lockerId = (
       await this.db.locker.create({
@@ -131,9 +159,21 @@ export class Harness {
     };
   }
   hold(range = this.range()) {
+    const proof = randomBytes(32).toString('base64url');
     return this.http()
       .post('/public/reservations/hold')
-      .send({ lockerId: this.lockerId, ...range });
+      .set('Authorization', 'Bearer ' + proof)
+      .set('Idempotency-Key', randomUUID())
+      .send({ lockerId: this.lockerId, ...range })
+      .on('response', (res: any) => {
+        if (res.status === 201) this.proofs.set(res.body.id, proof);
+      });
+  }
+  pay(id: string) {
+    return this.http()
+      .post('/public/payments/create-intent')
+      .set('Authorization', 'Bearer ' + this.proofs.get(id))
+      .send({ reservationId: id });
   }
   availability(range = this.range()) {
     return this.http().get('/public/lockers/availability').query(range);
@@ -181,6 +221,15 @@ export class Harness {
         object: {
           id: `pi_e2e_${reservationId}`,
           object: 'payment_intent',
+          status:
+            type === 'payment_intent.succeeded'
+              ? 'succeeded'
+              : type === 'payment_intent.processing'
+                ? 'processing'
+                : 'requires_payment_method',
+          amount: 500,
+          amount_received: type === 'payment_intent.succeeded' ? 500 : 0,
+          currency: 'cad',
           metadata: { reservationId },
         },
       },
@@ -274,6 +323,8 @@ export class Harness {
         } finally {
           if (this.db) await this.db.$disconnect();
           this.intent?.mockRestore();
+          this.retrieve?.mockRestore();
+          this.cancelIntent?.mockRestore();
         }
       }
     }

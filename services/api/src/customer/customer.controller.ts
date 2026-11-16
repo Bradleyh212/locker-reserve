@@ -15,11 +15,9 @@ import {
   Post,
   Req,
   UseGuards,
-  ValidationPipe,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { RedisCacheService } from '../cache/redis-cache.service';
-import { CreateHoldDto } from '../reservations/dto/create-hold.dto';
 import { CustomerAccessService } from './customer-access.service';
 import { digest } from './access-policy';
 
@@ -29,6 +27,7 @@ export class CustomerRequestGuard implements CanActivate {
   async canActivate(context: ExecutionContext) {
     const http = context.switchToHttp();
     http.getResponse<Response>().setHeader('Cache-Control', 'no-store');
+    http.getResponse<Response>().setHeader('Referrer-Policy', 'no-referrer');
     const req = http.getRequest<Request>();
     const loopback = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(
       req.socket.remoteAddress ?? '',
@@ -48,26 +47,6 @@ export class CustomerRequestGuard implements CanActivate {
 export class CustomerController {
   private logger = new Logger(CustomerController.name);
   constructor(private access: CustomerAccessService) {}
-
-  @Post('hold')
-  hold(
-    @Body(
-      new ValidationPipe({
-        transform: true,
-        whitelist: true,
-        forbidNonWhitelisted: true,
-      }),
-    )
-    dto: CreateHoldDto,
-    @Req() req: Request,
-  ) {
-    return this.access.hold(dto, req.ip ?? 'unknown');
-  }
-
-  @Post(':id/payment-intent')
-  payment(@Param('id') id: string, @Headers('authorization') header?: string) {
-    return this.access.payment(id, header);
-  }
 
   @Get(':id/access')
   readiness(

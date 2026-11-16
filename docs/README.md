@@ -35,3 +35,11 @@ Reviewed against the repository on 2026-10-02. This update changes documentation
 ## Historical reference
 
 [Previous AWS deployment guide](legacy/aws-eks-deployment.md) and [previous AWS target diagram](diagrams/locker-reserve-aws-eks-architecture.mmd). They are not the recommended deployment path.
+
+- [Device reliability and diagnostics](embedded/device-reliability.md)
+
+- [Owned booking recovery and payment verification](booking-recovery.md)
+
+- [Unknown device command reconciliation](embedded/command-reconciliation.md) — audited physical safety review, historical uncertainty and independent current readiness.
+
+- [Customer digital keys](embedded/customer-unlock.md) — shared booking credentials, verified payment and explicit safe customer requests.

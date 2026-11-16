@@ -1,10 +1,14 @@
-import { randomUUID } from 'node:crypto';
+import { randomUUID, randomBytes } from 'node:crypto';
 import { RedisCacheService } from '../../src/cache/redis-cache.service';
 import { Harness } from './harness';
 
 const h = new Harness();
 const route = '/v1/customer/reservations';
-type Booking = { reservationId: string; accessToken: string };
+type Booking = {
+  reservationId: string;
+  accessToken: string;
+  creationKey: string;
+};
 const auth = (b: Booking) => 'Bearer ' + b.accessToken;
 const endpoint = (b: Booking) => route + '/' + b.reservationId;
 
@@ -25,9 +29,13 @@ async function book(
   end = start + 3600000,
   lockerId = h.lockerId,
 ): Promise<Booking> {
+  const accessToken = randomBytes(32).toString('base64url'),
+    creationKey = randomUUID();
   const res = await h
     .http()
-    .post(route + '/hold')
+    .post('/public/reservations/hold')
+    .set('Authorization', 'Bearer ' + accessToken)
+    .set('Idempotency-Key', creationKey)
     .send({
       lockerId,
       startTime: new Date(start).toISOString(),
@@ -35,14 +43,14 @@ async function book(
     })
     .expect(201);
   expect(res.headers['cache-control']).toBe('no-store');
-  expect(res.body.accessToken).toMatch(/^[A-Za-z0-9_-]{43}$/);
-  return res.body;
+  return { reservationId: res.body.id, accessToken, creationKey };
 }
 function intent(b: Booking) {
   return h
     .http()
-    .post(endpoint(b) + '/payment-intent')
-    .set('Authorization', auth(b));
+    .post('/public/payments/create-intent')
+    .set('Authorization', auth(b))
+    .send({ reservationId: b.reservationId });
 }
 function success(b: Booking, extra: Record<string, unknown> = {}) {
   return JSON.stringify({
@@ -105,7 +113,7 @@ it('issues an owner credential, binds a real signed payment, polls and reports a
     .http()
     .post('/public/payments/create-intent')
     .send({ reservationId: b.reservationId })
-    .expect(404);
+    .expect(401);
   await unlock(b).expect(403);
   await pay(b);
   expect((await grant(b)).paidAt).not.toBeNull();
@@ -125,8 +133,12 @@ it('issues an owner credential, binds a real signed payment, polls and reports a
   await h.result(id).expect(200);
   const response = await status(b, id).expect(200);
   expect(Object.keys(response.body).sort()).toEqual([
+    'acknowledged',
     'commandId',
+    'completedAt',
+    'deliveredAt',
     'expiresAt',
+    'issuedAt',
     'status',
   ]);
   expect(response.body.status).toBe('OUTPUT_PULSE_COMPLETED');
@@ -367,7 +379,7 @@ it.each([
 ])('rejects mismatched signed payment evidence %j', async (overrides) => {
   const b = await book();
   await intent(b).expect(201);
-  await h.webhook(success(b, overrides)).expect(201);
+  await h.webhook(success(b, overrides)).expect(400);
   expect((await grant(b)).paidAt).toBeNull();
   await unlock(b).expect(403);
 });
@@ -394,7 +406,7 @@ it('handles success before intent binding, duplicate webhooks and concurrent acc
 it('retains reversals that arrive before binding or after success', async () => {
   const b = await book();
   await h.webhook(reversal(b)).expect(201);
-  await intent(b).expect(409);
+  expect((await intent(b).expect(201)).body.client_secret).toBeNull();
   await h.webhook(success(b)).expect(201);
   expect((await grant(b)).revokedAt).not.toBeNull();
   expect((await grant(b)).paidAt).toBeNull();
@@ -525,7 +537,7 @@ it('refuses to issue customer credentials over plaintext in production mode', as
   try {
     await h
       .http()
-      .post(route + '/hold')
+      .post('/public/reservations/hold')
       .send({ lockerId: h.lockerId, ...h.range() })
       .expect(403);
     expect(await h.db.customerReservationAccess.count()).toBe(0);
@@ -535,7 +547,12 @@ it('refuses to issue customer credentials over plaintext in production mode', as
 });
 
 it('cannot claim an existing paid legacy reservation or read an admin command using a customer credential', async () => {
-  const legacy = await h.hold().expect(201);
+  const legacy = await h
+    .http()
+    .post('/reservations/hold')
+    .set('Cookie', h.cookie)
+    .send({ lockerId: h.lockerId, ...h.range() })
+    .expect(201);
   await h.webhook(h.event(legacy.body.id)).expect(201);
   const customer = await book();
   await unlock({ ...customer, reservationId: legacy.body.id }).expect(404);
@@ -546,4 +563,225 @@ it('cannot claim an existing paid legacy reservation or read an admin command us
   ).toBeNull();
   const admin = await h.unlock().expect(202);
   await status(customer, admin.body.commandId).expect(404);
+});
+
+it('uses the same durable canonical creation/recovery credential for payment and access', async () => {
+  const b = await book();
+  const recover = () =>
+    h
+      .http()
+      .get('/public/reservations/recovery')
+      .set('Authorization', auth(b))
+      .set('Idempotency-Key', b.creationKey);
+  const first = (await recover().expect(200)).body;
+  h.advance(1000);
+  const retry = await h
+    .http()
+    .post('/public/reservations/hold')
+    .set('Authorization', auth(b))
+    .set('Idempotency-Key', b.creationKey)
+    .send({
+      lockerId: h.lockerId,
+      startTime: first.startTime,
+      endTime: first.endTime,
+    })
+    .expect(201);
+  expect(retry.body.id).toBe(b.reservationId);
+  expect(retry.body.expiresAt).toBe(first.expiresAt);
+  expect(await h.db.reservation.count()).toBe(1);
+  expect(await h.db.customerReservationAccess.count()).toBe(1);
+  await h
+    .http()
+    .post(route + '/hold')
+    .send({ lockerId: h.lockerId, ...h.range() })
+    .expect(404);
+  await pay(b);
+  expect((await ready(b).expect(200)).body.available).toBe(true);
+});
+
+it('denies processing and late successful payments until eligible verified payment exists', async () => {
+  const b = await book();
+  await intent(b).expect(201);
+  await h
+    .webhook(h.event(b.reservationId, 'payment_intent.processing'))
+    .expect(201);
+  expect((await grant(b)).paymentState).toBe('PROCESSING');
+  await unlock(b).expect(403);
+  h.advance(600001);
+  await h.webhook(success(b)).expect(201);
+  expect((await grant(b)).paymentState).toBe('RECONCILIATION_REQUIRED');
+  await unlock(b).expect(403);
+  expect(await h.db.deviceCommand.count()).toBe(0);
+});
+
+it('rechecks reconciliation restrictions at delivery even if paidAt is retained', async () => {
+  const b = await book();
+  await pay(b);
+  await unlock(b).expect(202);
+  await h.db.customerReservationAccess.update({
+    where: { reservationId: b.reservationId },
+    data: { paymentState: 'RECONCILIATION_REQUIRED' },
+  });
+  await h.next().expect(204);
+  await unlock(b).expect(403);
+});
+
+it('honors all-history operator acknowledgement without leaking its private evidence or bypassing the fresh-heartbeat gate', async () => {
+  const b = await book();
+  await pay(b);
+  const old = await h.db.deviceCommand.create({
+    data: {
+      deviceId: h.deviceId,
+      lockerId: h.lockerId,
+      requestedBy: 'operator',
+      reason: 'synthetic history',
+      pulseMs: 200,
+      issuedAt: new Date(h.now - 120000),
+      expiresAt: new Date(h.now - 110000),
+      result: 'UNKNOWN',
+    },
+  });
+  for (let i = 0; i < 6; i++)
+    await h.db.deviceCommand.create({
+      data: {
+        deviceId: h.deviceId,
+        lockerId: h.lockerId,
+        requestedBy: 'operator',
+        reason: 'synthetic successful history',
+        pulseMs: 200,
+        issuedAt: new Date(h.now - 90000 + i),
+        expiresAt: new Date(h.now - 80000),
+        result: 'OUTPUT_PULSE_COMPLETED',
+        completedAt: new Date(h.now - 80000),
+      },
+    });
+  await unlock(b).expect(409);
+  await h
+    .http()
+    .post(`/v1/admin/devices/${h.deviceId}/commands/${old.id}/reconciliation`)
+    .set('Cookie', h.cookie)
+    .send({
+      physicalSafetyConfirmed: true,
+      reason: 'Synthetic review of uncertain history',
+      evidence: 'Private operator evidence must not reach customer responses',
+    })
+    .expect(200);
+  await unlock(b).expect(409);
+  h.advance(1000);
+  await h.heartbeat();
+  const snapshot = await ready(b).expect(200);
+  expect(snapshot.body.available).toBe(true);
+  expect(JSON.stringify(snapshot.body)).not.toMatch(
+    /Private operator|operatorId|bootId|tokenHash|firmwareVersion/,
+  );
+  await unlock(b).expect(202);
+  expect(
+    (await h.db.deviceCommand.findUniqueOrThrow({ where: { id: old.id } }))
+      .result,
+  ).toBe('UNKNOWN');
+});
+
+it('preserves main timestamp/boot atomicity, expires queued access on reboot and reports door observations independently', async () => {
+  const b = await book();
+  await pay(b);
+  const heartbeat = (boot: string, uptime: number, sample = h.now) =>
+    h
+      .http()
+      .post('/v1/device/heartbeat')
+      .set('Authorization', 'Bearer ' + h.token)
+      .send({
+        doorState: 'CLOSED',
+        outputState: 'INACTIVE',
+        firmwareVersion: 'simulated',
+        actuationEnabled: true,
+        maxPulseMs: 5000,
+        observedAtMs: sample,
+        diagnostics: {
+          bootId: boot.repeat(32),
+          uptimeMs: uptime,
+          resetReason: 'POWERON',
+          communicationFailures: 0,
+          wifiDisconnects: 0,
+        },
+      });
+  await heartbeat('a', 1000).expect(200);
+  const id = (await unlock(b).expect(202)).body.commandId;
+  await h.next().expect(200);
+  expect((await status(b, id).expect(200)).body.status).toBe(
+    'DELIVERY_ATTEMPTED',
+  );
+  const before = await h.db.deviceCommand.findUniqueOrThrow({ where: { id } });
+  await heartbeat('b', 1, h.now - 15000).expect(400);
+  expect(await h.db.deviceCommand.findUniqueOrThrow({ where: { id } })).toEqual(
+    before,
+  );
+  expect(
+    (
+      await h.db.deviceHealth.findUniqueOrThrow({
+        where: { deviceId: h.deviceId },
+      })
+    ).bootId,
+  ).toBe('a'.repeat(32));
+  h.advance(10);
+  await heartbeat('b', 1).expect(200);
+  await h.next().expect(204);
+  expect((await status(b, id).expect(200)).body.status).toBe('OUTCOME_UNKNOWN');
+  const snapshot = (await ready(b).expect(200)).body;
+  expect(snapshot.door).toEqual({
+    state: 'CLOSED',
+    observedAt: new Date(h.now).toISOString(),
+    fresh: true,
+  });
+  expect(snapshot.available).toBe(false);
+  h.advance(1);
+  expect((await heartbeat('a', 2000).expect(200)).body.accepted).toBe(false);
+  await h.result(id).expect(200);
+  expect((await status(b, id).expect(200)).body.status).toBe(
+    'OUTPUT_PULSE_COMPLETED',
+  );
+  expect((await ready(b).expect(200)).body.door.state).toBe('CLOSED');
+});
+
+it('recovers acknowledged customer uncertainty without exposing administrator evidence and preserves late results', async () => {
+  const b = await book();
+  await pay(b);
+  const id = (await unlock(b).expect(202)).body.commandId;
+  h.advance(10001);
+  await h
+    .http()
+    .post(`/v1/admin/devices/${h.deviceId}/commands/${id}/reconciliation`)
+    .set('Cookie', h.cookie)
+    .send({
+      physicalSafetyConfirmed: true,
+      reason: 'Synthetic uncertainty acknowledgement',
+      evidence: 'Restricted inspection evidence for automated simulation',
+    })
+    .expect(200);
+  const view = (await status(b, id).expect(200)).body;
+  expect(view.status).toBe('OUTCOME_UNKNOWN');
+  expect(view.acknowledged).toBe(true);
+  expect(JSON.stringify(view)).not.toContain('Restricted');
+  await h.result(id).expect(200);
+  await h.result(id).expect(200);
+  await h.result(id, 'FAILED').expect(409);
+  expect((await status(b, id).expect(200)).body).toMatchObject({
+    status: 'OUTPUT_PULSE_COMPLETED',
+    acknowledged: true,
+  });
+});
+
+it('serializes cancellation and unlock and suppresses any queued command afterward', async () => {
+  const b = await book();
+  await pay(b);
+  const [command, cancellation] = await Promise.all([
+    unlock(b),
+    h
+      .http()
+      .post('/public/reservations/' + b.reservationId + '/cancel')
+      .set('Authorization', auth(b)),
+  ]);
+  expect([202, 403]).toContain(command.status);
+  expect(cancellation.status).toBe(201);
+  await h.next().expect(204);
+  expect((await grant(b)).revokedAt).not.toBeNull();
 });

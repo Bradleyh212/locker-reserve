@@ -1,3 +1,4 @@
+import { isFresh } from '../devices/device-health';
 import {
   BadRequestException,
   ConflictException,
@@ -9,18 +10,9 @@ import {
 } from '@nestjs/common';
 import { Prisma, Reservation } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { ReservationsService } from '../reservations/reservations.service';
-import { CreateHoldDto } from '../reservations/dto/create-hold.dto';
 import { DevicesService, HARD_MAX_PULSE_MS } from '../devices/devices.service';
-import { PaymentsService } from '../payments/payments.service';
 import { RedisCacheService } from '../cache/redis-cache.service';
-import {
-  bearerHash,
-  customerStatus,
-  digest,
-  eligible,
-  issueToken,
-} from './access-policy';
+import { bearerHash, customerStatus, digest, eligible } from './access-policy';
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -32,33 +24,9 @@ export class CustomerAccessService {
   private logger = new Logger(CustomerAccessService.name);
   constructor(
     private db: PrismaService,
-    private holds: ReservationsService,
-    private payments: PaymentsService,
     private devices: DevicesService,
     private cache: RedisCacheService,
   ) {}
-
-  async hold(dto: CreateHoldDto, peer: string) {
-    await this.cache.limitAccess('issue:' + digest(peer), 10, 600);
-    const token = issueToken();
-    const hold = await this.holds.createHold(dto, digest(token));
-    return {
-      reservationId: hold.id,
-      expiresAt: hold.expiresAt,
-      accessToken: token,
-    };
-  }
-
-  async payment(id: string, header?: string) {
-    const hash = bearerHash(header);
-    await this.owner(id, hash);
-    const intent = await this.payments.createPaymentIntent(id, hash);
-    return {
-      clientSecret: intent.client_secret,
-      amount: intent.amount,
-      currency: intent.currency,
-    };
-  }
 
   private async owner(id: string, hash: string) {
     const r = await this.db.reservation.findFirst({
@@ -96,11 +64,34 @@ export class CustomerAccessService {
   }
 
   async readiness(id: string, header?: string) {
-    const r = await this.owner(id, bearerHash(header));
-    if (!eligible(r, Date.now()))
-      return { available: false, code: 'RESERVATION_INELIGIBLE' };
-    try {
-      await this.db.$transaction(async (tx) => {
+    const hash = bearerHash(header);
+    await this.owner(id, hash);
+    return this.db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "Reservation" WHERE "id" = ${id} FOR SHARE`;
+      const r = await tx.reservation.findUnique({
+        where: { id },
+        include: { access: true },
+      });
+      if (!r || r.access?.tokenHash !== hash) throw missing();
+      const commands = await tx.deviceCommand.findMany({
+        where: { reservationId: id },
+        include: { reconciliation: true },
+        orderBy: { issuedAt: 'desc' },
+        take: 10,
+      });
+      const base = {
+        paymentState: r.access!.paymentState,
+        serverNow: new Date(),
+        commands: commands.map(customerStatus),
+        door: null as null | {
+          state: string;
+          observedAt: Date | null;
+          fresh: boolean;
+        },
+      };
+      if (!eligible(r, Date.now()))
+        return { ...base, available: false, code: 'RESERVATION_INELIGIBLE' };
+      try {
         const target = await this.target(tx, r);
         await this.devices.checkPulse(
           tx,
@@ -108,15 +99,46 @@ export class CustomerAccessService {
           target.pulse,
           target.scope,
         );
-      });
-      return { available: true };
-    } catch (error) {
-      if (!(error instanceof HttpException)) throw error;
-      const detail = error.getResponse();
-      if (typeof detail === 'object' && 'retryAt' in detail)
-        return { available: false, code: 'COOLDOWN', retryAt: detail.retryAt };
-      return { available: false, code: 'LOCKER_UNAVAILABLE' };
-    }
+        const d = await tx.lockerDevice.findUniqueOrThrow({
+          where: { id: target.id },
+        });
+        return {
+          ...base,
+          available: true,
+          code: 'READY',
+          door: {
+            state: d.doorState,
+            observedAt: d.doorObservedAt,
+            fresh: isFresh(d.lastSeen),
+          },
+        };
+      } catch (error) {
+        if (!(error instanceof HttpException)) throw error;
+        const d = await tx.lockerDevice.findUnique({
+          where: { lockerId: r.lockerId },
+        });
+        const fresh = !!d && isFresh(d.lastSeen);
+        const detail = error.getResponse();
+        return {
+          ...base,
+          available: false,
+          code:
+            typeof detail === 'object' && 'retryAt' in detail
+              ? 'COOLDOWN'
+              : 'LOCKER_UNAVAILABLE',
+          ...(typeof detail === 'object' && 'retryAt' in detail
+            ? { retryAt: detail.retryAt }
+            : {}),
+          door: d
+            ? {
+                state: fresh ? d.doorState : 'UNKNOWN',
+                observedAt: d.doorObservedAt,
+                fresh,
+              }
+            : null,
+        };
+      }
+    });
   }
 
   async unlock(
@@ -147,6 +169,7 @@ export class CustomerAccessService {
         throw missing();
       const previous = await tx.deviceCommand.findUnique({
         where: { reservationId_requestKey: { reservationId: id, requestKey } },
+        include: { reconciliation: true },
       });
       if (previous)
         return { response: customerStatus(previous), replayed: true };
@@ -177,6 +200,7 @@ export class CustomerAccessService {
     if (!key || !UUID.test(key))
       throw new BadRequestException('Idempotency-Key must be a UUID v4');
     const command = await this.db.deviceCommand.findUnique({
+      include: { reconciliation: true },
       where: {
         reservationId_requestKey: {
           reservationId: id,
@@ -192,6 +216,7 @@ export class CustomerAccessService {
     await this.owner(id, bearerHash(header));
     const command = await this.db.deviceCommand.findFirst({
       where: { id: commandId, reservationId: id },
+      include: { reconciliation: true },
     });
     if (!command) throw missing();
     return customerStatus(command);

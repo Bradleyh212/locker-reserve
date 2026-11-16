@@ -1,6 +1,13 @@
 @import "tailwindcss";
 
+/* Shared geometry for every theme. See docs/dashboard-design.md. */
 :root {
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 18px;
+  --radius-xl: 22px;
+  --radius-2xl: 26px;
+  --radius-pill: 9999px;
   color-scheme: light;
   --background: #f6f7f9;
   --foreground: #17202a;
@@ -291,7 +298,7 @@ select {
   height: 34px;
   align-items: center;
   justify-content: center;
-  border-radius: 9px;
+  border-radius: var(--radius-sm);
   background: var(--purple-soft);
   color: var(--purple);
 }
@@ -312,7 +319,7 @@ select {
   gap: 10px;
   min-height: 44px;
   padding: 10px 12px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   color: var(--nav-text);
   font-size: 0.94rem;
   font-weight: 700;
@@ -382,7 +389,7 @@ select {
   gap: 2px;
   padding: 3px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   background: var(--surface-muted);
 }
 
@@ -390,7 +397,7 @@ select {
   min-height: 32px;
   padding: 0 10px;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--muted);
   cursor: pointer;
@@ -416,7 +423,7 @@ select {
   height: 38px;
   align-items: center;
   justify-content: center;
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   background: var(--avatar-background);
   color: var(--avatar-text);
   font-weight: 900;
@@ -462,7 +469,7 @@ select {
 
 .nav-link {
   padding: 8px 10px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   color: var(--muted);
   text-decoration: none;
   font-size: 0.92rem;
@@ -563,7 +570,7 @@ select {
   gap: 10px;
   padding: 8px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--pill-background);
   box-shadow: var(--shadow-soft);
   color: var(--pill-text);
@@ -576,7 +583,7 @@ select {
 
 .card {
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   background: var(--surface);
   color: var(--foreground);
   box-shadow: var(--shadow);
@@ -626,7 +633,7 @@ button.card {
   align-items: center;
   justify-content: center;
   flex: 0 0 auto;
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   background: var(--card-soft, var(--primary-soft));
   color: var(--card-color, var(--primary));
 }
@@ -736,7 +743,7 @@ button.card {
 .legend-dot {
   width: 11px;
   height: 11px;
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
 }
 
 .recent-card {
@@ -768,12 +775,13 @@ button.card {
 }
 
 .field input,
-.field select {
+.field select,
+.field textarea {
   width: 100%;
   min-height: 42px;
   padding: 9px 11px;
   border: 1px solid var(--border-strong);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: var(--control-background);
   color: var(--control-text);
   font-weight: 500;
@@ -789,7 +797,8 @@ input[type="checkbox"] {
 }
 
 .field input:focus,
-.field select:focus {
+.field select:focus,
+.field textarea:focus {
   outline: 3px solid var(--primary-soft);
   border-color: var(--primary);
 }
@@ -809,7 +818,7 @@ input[type="checkbox"] {
   gap: 8px;
   padding: 9px 14px;
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: var(--primary);
   color: var(--primary-text);
   font-weight: 800;
@@ -849,7 +858,7 @@ input[type="checkbox"] {
 .table-wrap {
   overflow-x: auto;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   background: var(--surface);
 }
 
@@ -888,7 +897,7 @@ input[type="checkbox"] {
   align-items: center;
   min-height: 24px;
   padding: 3px 9px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   font-size: 0.76rem;
   font-weight: 800;
 }
@@ -922,7 +931,7 @@ input[type="checkbox"] {
 .loading-state,
 .alert {
   padding: 14px 16px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--muted);
@@ -956,7 +965,7 @@ input[type="checkbox"] {
 .step-card {
   padding: 16px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   background: var(--surface);
 }
 
@@ -967,7 +976,7 @@ input[type="checkbox"] {
   align-items: center;
   justify-content: center;
   margin-bottom: 10px;
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   background: var(--primary-soft);
   color: var(--primary);
   font-weight: 900;
@@ -1038,3 +1047,27 @@ input[type="checkbox"] {
     padding-top: 24px;
   }
 }
+
+
+dialog { border-radius: var(--radius-xl); }
+[popover], [role="menu"] { border-radius: var(--radius-md); }
+:where(button, a, input, textarea, select, summary):focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+
+.confirmation {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  width: min(400px, calc(100% - 32px));
+  padding: 24px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--foreground);
+  box-shadow: var(--shadow);
+}
+.confirmation::backdrop { background: rgb(7 16 29 / 45%); }
+.confirmation p { color: var(--muted); }
+.confirmation .button-row { margin-top: 18px; }

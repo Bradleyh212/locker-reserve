@@ -11,6 +11,7 @@ describe('device command boundaries', () => {
         update: jest.fn(),
       },
       deviceCommand: {
+        count: jest.fn().mockResolvedValue(0),
         findFirst: jest.fn(),
         create: jest.fn(),
         findUnique: jest.fn(),
@@ -19,7 +20,11 @@ describe('device command boundaries', () => {
       $queryRaw: jest.fn(),
     };
     db.$transaction = async (fn: any) => fn(db);
-    service = new DevicesService(db);
+    service = new DevicesService(db, {
+      authenticationFailure: jest.fn(),
+      event: jest.fn(),
+      heartbeat: jest.fn().mockResolvedValue(true),
+    } as any);
     process.env.DEVICE_MAX_PULSE_MS = '200';
   });
   afterEach(() => delete process.env.DEVICE_MAX_PULSE_MS);
@@ -34,6 +39,8 @@ describe('device command boundaries', () => {
       outputState: 'INACTIVE',
       doorState: 'CLOSED',
       locker: { isActive: true },
+      _count: { commands: 0 },
+      commandReconciliations: [],
     });
   }
   it('reports server limits and unresolved commands to the dashboard', async () => {
@@ -52,9 +59,11 @@ describe('device command boundaries', () => {
     device.commands = [
       { issuedAt: new Date(0), expiresAt: new Date(1), result: null },
     ];
+    device._count.commands = 1;
     const result = (await service.list())[0];
     expect(result.unlock.allowed).toBe(false);
     expect(result.commands[0].status).toBe('EXPIRED_UNKNOWN');
+    device._count.commands = 0;
     device.commands = [
       {
         issuedAt: new Date(),
@@ -173,14 +182,21 @@ describe('device command boundaries', () => {
     process.env.DEVICE_BENCH_SHORT_COOLDOWN = '1';
     try {
       ready();
-      const command = { issuedAt: new Date(Date.now() - 10000), completedAt: new Date(),
-        result: 'OUTPUT_PULSE_COMPLETED' };
+      const command = {
+        issuedAt: new Date(Date.now() - 10000),
+        completedAt: new Date(),
+        result: 'OUTPUT_PULSE_COMPLETED',
+      };
       const d = await db.lockerDevice.findUnique();
-      db.lockerDevice.findMany.mockResolvedValue([{ ...d, commands: [command] }]);
+      db.lockerDevice.findMany.mockResolvedValue([
+        { ...d, commands: [command] },
+      ]);
       db.deviceCommand.findFirst.mockResolvedValue(command);
       jest.advanceTimersByTime(4999);
       expect((await service.list())[0].unlock.allowed).toBe(false);
-      await expect(service.enqueue('d', { pulseMs: 100, reason: 'bench' }, 'admin')).rejects.toThrow();
+      await expect(
+        service.enqueue('d', { pulseMs: 100, reason: 'bench' }, 'admin'),
+      ).rejects.toThrow();
       jest.advanceTimersByTime(1);
       expect((await service.list())[0].unlock.allowed).toBe(true);
     } finally {
@@ -190,6 +206,7 @@ describe('device command boundaries', () => {
   });
   it('blocks unresolved commands even after their expiry', async () => {
     ready();
+    db.deviceCommand.count.mockResolvedValue(1);
     db.deviceCommand.findFirst.mockResolvedValue({
       issuedAt: new Date(0),
       result: null,
@@ -248,5 +265,28 @@ describe('device command boundaries', () => {
         reason: 'DONE',
       }),
     ).rejects.toThrow();
+  });
+  it('rechecks observation freshness after waiting for the device lock', async () => {
+    jest.useFakeTimers();
+    try {
+      ready();
+      const observedAtMs = Date.now() - 14000;
+      db.$queryRaw.mockImplementation(async () => {
+        jest.advanceTimersByTime(1001);
+      });
+      await expect(
+        service.heartbeat('d', {
+          observedAtMs,
+          doorState: 'CLOSED',
+          outputState: 'INACTIVE',
+          firmwareVersion: 'test',
+          actuationEnabled: true,
+          maxPulseMs: 200,
+        }),
+      ).rejects.toThrow('Door observation timestamp outside freshness window');
+      expect(db.lockerDevice.update).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });
