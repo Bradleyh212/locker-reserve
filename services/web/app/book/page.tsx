@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import DigitalKey from "./DigitalKey";
 import { loadStripe } from "@stripe/stripe-js";
 import {
   Elements,
@@ -69,7 +70,12 @@ export default function BookingPage() {
   }, [active]);
   const accept = useCallback(
     (record: PendingHold, reservation: Reservation) => {
-      rememberHold({ ...record, reservation });
+      const latest = getPendingHolds().find(
+        (r) =>
+          r.requestKey === record.requestKey &&
+          r.accessToken === record.accessToken,
+      );
+      rememberHold({ ...(latest ?? record), reservation });
       const now = performance.now();
       setTick(now);
       setVerified((v) => ({ ...v, [record.requestKey]: now }));
@@ -379,8 +385,17 @@ export default function BookingPage() {
           )}
           {verified[r.requestKey] !== undefined &&
             r.reservation &&
+            (r.reservation.status === "CONFIRMED" || !!r.unlockRequestKey) && (
+              <DigitalKey record={r} />
+            )}
+          {verified[r.requestKey] !== undefined &&
+            r.reservation &&
+            !r.unlockRequestKey &&
             ((r.reservation.status === "CONFIRMED" &&
-              r.reservation.paymentState === "SUCCEEDED") ||
+              r.reservation.paymentState === "SUCCEEDED" &&
+              new Date(r.reservation.endTime).getTime() <=
+                new Date(r.reservation.serverNow).getTime() &&
+              !r.unlockRequestKey) ||
               (["CANCELLED", "EXPIRED"].includes(r.reservation.status) &&
                 (!r.reservation.hasPayment ||
                   r.reservation.paymentState === "CANCELED"))) && (

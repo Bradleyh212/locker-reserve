@@ -167,3 +167,5 @@ Validated with Node 24.21.0, PostgreSQL 16 and Redis 7 in disposable containers:
 
 A GitHub-hosted run is still required after pushing. Existing dependency-audit
 warnings from the unchanged lockfile remain outside this feature's scope.
+
+Customer access regressions use the same canonical owned holds and payment bindings, then simulated device polling/results. The customer API adds readiness and idempotent unlock/status routes; it does not create a second hold or payment flow. See [customer digital keys](../embedded/customer-unlock.md) for combined coverage and operator rollout constraints.

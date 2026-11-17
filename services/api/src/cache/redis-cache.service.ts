@@ -1,4 +1,10 @@
-import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
+import {
+  HttpException,
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 
 type RedisCacheClient = {
   isOpen: boolean;
@@ -9,6 +15,10 @@ type RedisCacheClient = {
     value: string,
     options: { expiration: { type: 'EX'; value: number } },
   ): Promise<unknown>;
+  eval(
+    script: string,
+    options: { keys: string[]; arguments: string[] },
+  ): Promise<number>;
   del(key: string | string[]): Promise<unknown>;
   scanIterator(options: {
     MATCH: string;
@@ -29,6 +39,26 @@ export class RedisCacheService implements OnModuleDestroy {
   private readonly redisUrl = process.env.REDIS_URL;
   private client?: RedisCacheClient;
   private connectPromise?: Promise<RedisCacheClient | null>;
+
+  // Unlike optional read caching, access throttling must fail closed.
+  async limitAccess(key: string, maximum: number, seconds: number) {
+    let count: number;
+    try {
+      const client = await this.getClient();
+      if (!client) throw new Error('Redis unavailable');
+      count = await client.eval(
+        "local n = redis.call('INCR', KEYS[1]); if n == 1 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end; return n",
+        { keys: [`customer-access:${key}`], arguments: [String(seconds)] },
+      );
+    } catch {
+      throw new ServiceUnavailableException('Access temporarily unavailable');
+    }
+    if (count > maximum)
+      throw new HttpException(
+        { code: 'RATE_LIMIT', retryAfterSeconds: seconds },
+        429,
+      );
+  }
 
   async isHealthy(): Promise<boolean> {
     const client = await this.getClient();

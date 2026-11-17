@@ -41,3 +41,5 @@ Reviewed against the repository on 2026-10-02. This update changes documentation
 - [Owned booking recovery and payment verification](booking-recovery.md)
 
 - [Unknown device command reconciliation](embedded/command-reconciliation.md) — audited physical safety review, historical uncertainty and independent current readiness.
+
+- [Customer digital keys](embedded/customer-unlock.md) — shared booking credentials, verified payment and explicit safe customer requests.

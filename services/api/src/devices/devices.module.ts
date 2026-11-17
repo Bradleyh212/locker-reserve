@@ -5,6 +5,7 @@ import { DevicesService } from './devices.service';
 import { AdminDevicesController, DeviceController } from './devices.controller';
 @Module({
   imports: [PrismaModule],
+  exports: [DevicesService],
   controllers: [AdminDevicesController, DeviceController],
   providers: [DevicesService, DeviceReliabilityService],
 })

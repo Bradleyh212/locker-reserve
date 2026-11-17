@@ -1,6 +1,6 @@
 # Locker Reserve API
 
-NestJS API for lockers, reservations, admin authentication, Stripe payments and optional Redis caching. The [device API](../../docs/embedded/device-api.md) supports authenticated admin bench commands; customer reservation-authorized unlocking is not implemented.
+NestJS API for lockers, reservations, admin authentication, Stripe payments and optional Redis caching. The [device API](../../docs/embedded/device-api.md) supports authenticated admin bench commands. The [customer access API](../../docs/embedded/customer-unlock.md) authorizes a paid reservation holder to request a bounded pulse.
 
 ## Local development
 
@@ -36,3 +36,5 @@ From this directory: `npm test -- --runInBand` for unit tests, `npm run test:e2e
 ## Deployment and embedded plans
 
 Use the [Docker deployment plan](../../docs/deployment.md). Existing runtime packaging and production Compose still have documented prerequisites. Read the [documentation index](../../docs/README.md) for proposed device identity, authorization and firmware contracts.
+
+Customer digital-key access extends the existing owned booking/payment routes: see [customer access](../../docs/embedded/customer-unlock.md). No separate hold/credential issuance flow is introduced.
