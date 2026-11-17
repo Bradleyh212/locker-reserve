@@ -1,5 +1,7 @@
 # Docker cloud deployment plan
 
+For the implemented private Linux staging configuration, see [Ubuntu HTTPS staging](linux-staging.md). It supersedes the target-only steps below for that environment.
+
 Status: target runbook, not a validated deployment. AWS/EKS is historical; see the [legacy guide](legacy/aws-eks-deployment.md). No provider, domain or new infrastructure is provisioned by this documentation change.
 
 ## Target layout

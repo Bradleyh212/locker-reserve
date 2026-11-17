@@ -3,14 +3,22 @@ import { createServer } from 'https';
 import 'dotenv/config';
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
+import { ConsoleLogger } from '@nestjs/common';
+import { configureProxy } from './proxy-config';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
     rawBody: true,
+    ...(process.env.NODE_ENV === 'production' && {
+      logger: new ConsoleLogger({ json: true }),
+    }),
   });
 
-  if (process.env.LOCAL_DEV_RUN_ID) app.enableShutdownHooks();
+  configureProxy(app.getHttpAdapter().getInstance(), process.env);
+
+  if (process.env.NODE_ENV === 'production' || process.env.LOCAL_DEV_RUN_ID)
+    app.enableShutdownHooks();
 
   app.enableCors({
     origin: process.env.CORS_ORIGIN ?? 'http://localhost:3000',

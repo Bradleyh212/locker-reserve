@@ -41,3 +41,5 @@ Reviewed against the repository on 2026-10-02. This update changes documentation
 - [Owned booking recovery and payment verification](booking-recovery.md)
 
 - [Unknown device command reconciliation](embedded/command-reconciliation.md) — audited physical safety review, historical uncertainty and independent current readiness.
+
+- [Private Ubuntu HTTPS staging](linux-staging.md) — isolated Compose, Caddy, secrets, migration and recovery procedures.

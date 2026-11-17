@@ -1,0 +1,8 @@
+{
+  "DATABASE_URL": "postgresql://locker:URL_ENCODED_PASSWORD@db:5432/locker_staging?schema=public",
+  "ADMIN_EMAIL": "operator@example.com",
+  "ADMIN_PASSWORD_HASH": "$2b$12$REPLACE_WITH_BCRYPT_HASH",
+  "JWT_SECRET": "REPLACE_WITH_AT_LEAST_32_RANDOM_CHARACTERS",
+  "STRIPE_SECRET_KEY": "sk_test_REPLACE",
+  "STRIPE_WEBHOOK_SECRET": "whsec_REPLACE"
+}

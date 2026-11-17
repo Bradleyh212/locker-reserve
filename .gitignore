@@ -152,3 +152,5 @@ vite.config.ts.timestamp-*
 
 # Python startup-script bytecode
 scripts/__pycache__/
+
+scripts/staging/__pycache__/
