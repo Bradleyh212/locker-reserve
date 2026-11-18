@@ -43,3 +43,4 @@ Reviewed against the repository on 2026-10-02. This update changes documentation
 - [Unknown device command reconciliation](embedded/command-reconciliation.md) — audited physical safety review, historical uncertainty and independent current readiness.
 
 - [Private Ubuntu HTTPS staging](linux-staging.md) — isolated Compose, Caddy, secrets, migration and recovery procedures.
+- [Customer digital keys](embedded/customer-unlock.md) — shared booking credentials, verified payment and explicit safe customer requests.

@@ -40,6 +40,7 @@ model Reservation {
   updatedAt DateTime @updatedAt
 
   access CustomerReservationAccess?
+  commands DeviceCommand[]
 
   @@index([lockerId, startTime, endTime])
   @@index([status, expiresAt])
@@ -108,6 +109,10 @@ model DeviceCommand {
   completedAt DateTime?
   deliveredAt DateTime?
   expiryObservedAt DateTime?
+  reservationId String?
+  reservation Reservation? @relation(fields: [reservationId], references: [id], onDelete: Restrict)
+  requestKey String?
+  @@unique([reservationId, requestKey])
   reconciliation DeviceCommandReconciliation?
   @@index([deviceId, issuedAt])
 }

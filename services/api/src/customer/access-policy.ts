@@ -27,3 +27,51 @@ export function creationKey(value?: string) {
     throw new BadRequestException('Idempotency-Key must be a UUID v4');
   return value!.toLowerCase();
 }
+
+export function eligible(
+  r: {
+    status: string;
+    startTime: Date;
+    endTime: Date;
+    access: {
+      paymentIntentId: string | null;
+      paidAt: Date | null;
+      revokedAt: Date | null;
+      paymentState: string;
+    } | null;
+  },
+  now: number,
+) {
+  return (
+    r.status === 'CONFIRMED' &&
+    !!r.access?.paymentIntentId &&
+    !!r.access.paidAt &&
+    !r.access.revokedAt &&
+    r.access.paymentState === 'SUCCEEDED' &&
+    r.startTime.getTime() <= now &&
+    now < r.endTime.getTime()
+  );
+}
+export function customerStatus(c: {
+  id: string;
+  issuedAt: Date;
+  expiresAt: Date;
+  deliveredAt: Date | null;
+  completedAt: Date | null;
+  result: string | null;
+  reconciliation?: unknown;
+}) {
+  return {
+    commandId: c.id,
+    issuedAt: c.issuedAt,
+    expiresAt: c.expiresAt,
+    deliveredAt: c.deliveredAt,
+    completedAt: c.completedAt,
+    acknowledged: !!c.reconciliation,
+    status:
+      c.result === 'UNKNOWN' ||
+      (!c.result && c.expiresAt.getTime() <= Date.now())
+        ? 'OUTCOME_UNKNOWN'
+        : (c.result ?? (c.deliveredAt ? 'DELIVERY_ATTEMPTED' : 'PENDING')),
+  };
+}

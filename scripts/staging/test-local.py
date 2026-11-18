@@ -18,8 +18,9 @@ parser.add_argument('--release-id', default='local-validation')
 a = parser.parse_args()
 project = 'locker-staging-validation'
 existing = subprocess.check_output(['docker','ps','-aq','--filter','label=com.docker.compose.project='+project]).strip()
-if existing:
-    raise SystemExit('Refusing to modify an existing validation project; inspect it first.')
+existing_volumes = subprocess.check_output(['docker','volume','ls','-q','--filter','label=com.docker.compose.project='+project]).strip()
+if existing or existing_volumes:
+    raise SystemExit('Refusing to modify an existing validation project or its data volumes; inspect them first.')
 with tempfile.TemporaryDirectory(prefix='locker-staging-test-') as directory:
     temporary = Path(directory)
     envfile = temporary/'compose.env'
@@ -67,6 +68,7 @@ PROXY_IP=172.30.91.2
         compose('run','--rm','--no-deps','caddy','caddy','validate','--config','/etc/caddy/Caddyfile','--adapter','caddyfile')
         started = True
         compose('up','-d','--wait','db','redis')
+        subprocess.run(['python3',str(root/'scripts/staging/migration-check.py')],env=env,check=True)
         compose('run','--rm','migrate')
         compose('up','-d','--no-build','--wait')
         ca = temporary/'root.crt'

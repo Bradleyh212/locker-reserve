@@ -85,4 +85,30 @@ recovered = json.loads(recovered)
 check(status == 200 and recovered['id'] == reservation['id'] and recovered['expiresAt'] == reservation['expiresAt'], 'Lost-response recovery preserves reservation and deadline')
 check(request('/api/public/reservations/'+reservation['id'], headers={'Authorization':'Bearer '+'B'*43})[0] == 404, 'Reservation ID alone/wrong ownership proof grants no access')
 check(request('/api/public/payments/create-intent','POST',{'reservationId':reservation['id']})[0] == 401, 'Payment credentials require ownership proof')
-print('Fixture HTTPS checks passed; no real Stripe API or device was contacted.')
+# Synthetic paid entitlement and an otherwise armed simulated device. Never copies Mac records.
+# These fixture writes are restricted to the disposable validation project's PostgreSQL.
+device_token = 'staging-simulated-token-' + uuid.uuid4().hex
+fixture_sql = """
+UPDATE "Reservation" SET status='CONFIRMED', "startTime"=NOW()-INTERVAL '1 minute' WHERE id=:'reservation_id';
+UPDATE "CustomerReservationAccess" SET "paymentIntentId"='pi_staging_fixture', "paidAt"=NOW(), "paymentState"='SUCCEEDED' WHERE "reservationId"=:'reservation_id';
+INSERT INTO "LockerDevice" (id,"lockerId","tokenHash",enabled,"lastSeen","doorObservedAt","doorState","outputState","actuationEnabled","maxPulseMs")
+VALUES ('staging-simulated-device','staging-fixture-locker',:'token_hash',true,NOW(),NOW(),'CLOSED','INACTIVE',true,5000);
+"""
+def fixture_db(sql, *variables):
+    return subprocess.run(['sh',str(root/'scripts/staging/compose.sh'),'exec','-T','db','psql','-U','locker','-d','locker_staging','-v','ON_ERROR_STOP=1', *variables], input=sql, check=True, capture_output=True, text=True).stdout
+fixture_db(fixture_sql, '-v','reservation_id='+reservation['id'], '-v','token_hash='+hashlib.sha256(device_token.encode()).hexdigest())
+path = '/api/v1/customer/reservations/'+reservation['id']
+check(request(path+'/access')[0] == 401, 'Digital key requires ownership proof')
+check(request(path+'/access', headers={'Authorization':'Bearer '+'B'*43})[0] == 404, 'Digital key conceals another owner reservation')
+status, _, data = request(path+'/access',headers=owned)
+access = json.loads(data)
+check(status == 200 and access['paymentState']=='SUCCEEDED' and not access['available'], 'Paid customer digital key reads through HTTPS but staging is unavailable for pulses')
+check(request(path+'/unlock-requests','POST',{}, {**owned,'Idempotency-Key':str(uuid.uuid4())})[0] == 403, 'Customer unlock denied for an otherwise eligible paid reservation')
+admin = {'Cookie':cookie.split(';')[0]}
+check(request('/api/v1/admin/devices/staging-simulated-device/unlock-requests','POST',{'pulseMs':5000,'reason':'Simulated staging safety regression'},admin)[0] == 403, 'Authenticated administrator unlock denied in staging')
+check(fixture_db('SELECT COUNT(*) FROM "DeviceCommand";', '-At').strip() == '0', 'Denied unlock requests create no device commands')
+# A synthetic already-queued command must not be delivered either.
+fixture_db("""INSERT INTO "DeviceCommand" (id,"deviceId","lockerId","requestedBy",reason,"pulseMs","expiresAt") VALUES ('staging-queued-fixture','staging-simulated-device','staging-fixture-locker','fixture','Simulated pending command',5000,NOW()+INTERVAL '1 hour');""")
+check(request('/v1/device/commands/next',headers={'Authorization':'Bearer '+device_token},api=True)[0] == 204, 'Authenticated simulated device cannot receive an already queued pulse')
+check(fixture_db("SELECT COUNT(*) FROM \"DeviceCommand\" WHERE id='staging-queued-fixture' AND result IS NULL AND \"deliveredAt\" IS NULL;", '-At').strip() == '1', 'Blocked queued command retains its unknown historical outcome')
+print('Fixture HTTPS and digital-key safety checks passed; no real Stripe API or physical device was contacted.')

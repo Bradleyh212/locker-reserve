@@ -35,6 +35,16 @@ async function setup(page: Page, blocked = false) {
     failSetup: false,
     records: new Map<string, { token: string; r: Receipt }>(),
     now: Date.now(),
+    unlockPosts: [] as string[],
+    command: null as null | {
+      commandId: string;
+      status: string;
+      issuedAt: string;
+      expiresAt: string;
+      deliveredAt: null;
+      completedAt: null;
+      acknowledged: boolean;
+    },
   };
   await page.route(
     (url) => url.origin !== origin,
@@ -141,6 +151,49 @@ async function setup(page: Page, blocked = false) {
             currency: "cad",
           },
         });
+      }
+      if (p.startsWith("/v1/customer/reservations/")) {
+        const saved = [...state.records.values()].find(
+          (v) => v.r.id === p.split("/")[4],
+        );
+        if (!saved || saved.token !== token)
+          return route.fulfill({ status: 404, json: {} });
+        if (p.endsWith("/access"))
+          return route.fulfill({
+            json: {
+              paymentState: saved.r.paymentState,
+              serverNow: new Date(state.now).toISOString(),
+              available:
+                saved.r.status === "CONFIRMED" &&
+                saved.r.paymentState === "SUCCEEDED" &&
+                !state.command,
+              code: state.command ? "LOCKER_UNAVAILABLE" : "READY",
+              commands: state.command ? [state.command] : [],
+              door: {
+                state: "CLOSED",
+                fresh: true,
+                observedAt: new Date(state.now).toISOString(),
+              },
+            },
+          });
+        if (p.endsWith("/unlock-requests")) {
+          if (request.method() === "GET")
+            return route.fulfill({
+              status: state.command ? 200 : 404,
+              json: state.command ?? {},
+            });
+          state.unlockPosts.push(key);
+          state.command ??= {
+            commandId: "simulated-command",
+            status: "PENDING",
+            issuedAt: new Date(state.now).toISOString(),
+            expiresAt: new Date(state.now + 10000).toISOString(),
+            deliveredAt: null,
+            completedAt: null,
+            acknowledged: false,
+          };
+          return route.fulfill({ status: 202, json: state.command });
+        }
       }
       // Every off-origin request is intercepted; no Stripe API or physical device is contacted.
       return route.fulfill({ status: 404, json: {} });
@@ -275,9 +328,12 @@ for (const status of ["CANCELLED", "EXPIRED", "CONFIRMED"] as const)
         page.getByRole("heading", { name: "Checkout", exact: true }),
       ).toHaveCount(0);
       expect(state.intentPosts).toBe(0);
-      await expect(
-        page.getByRole("button", { name: "Remove saved receipt", exact: true }),
-      ).toBeVisible();
+      const remove = page.getByRole("button", {
+        name: "Remove saved receipt",
+        exact: true,
+      });
+      if (status === "CONFIRMED") await expect(remove).toHaveCount(0);
+      else await expect(remove).toBeVisible();
     },
   );
 test("uses server timing when the browser wall clock is wrong", async ({
@@ -431,4 +487,56 @@ test("a delayed older status response cannot overwrite a newer verified outcome"
     }),
   ).toBeVisible();
   expect(state.intentPosts).toBe(0);
+});
+
+test("completes canonical booking and mocked checkout into the same recovered digital key with one explicit unlock", async ({
+  page,
+}) => {
+  const state = await setup(page);
+  await choose(page);
+  await page.getByRole("button", { name: "Create hold", exact: true }).click();
+  await resume(page).click();
+  await expect(
+    page.getByText("Mock payment details", { exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Submit payment", exact: true })
+    .click();
+  const [creationKey, saved] = [...state.records.entries()][0];
+  saved.r.paymentState = "PROCESSING";
+  saved.r.canPay = false;
+  await page.reload();
+  await expect(
+    page.getByRole("heading", {
+      name: "Payment processing · B-101",
+      exact: true,
+    }),
+  ).toBeVisible();
+  expect(state.unlockPosts).toHaveLength(0);
+  saved.r.status = "CONFIRMED";
+  saved.r.paymentState = "SUCCEEDED";
+  await resume(page).click();
+  await expect(
+    page.getByRole("heading", { name: "Digital key · B-101", exact: true }),
+  ).toBeVisible();
+  const unlock = page.getByRole("button", {
+    name: "Unlock assigned locker",
+    exact: true,
+  });
+  await expect(unlock).toBeEnabled();
+  expect(state.unlockPosts).toHaveLength(0);
+  await unlock.click();
+  await expect(
+    page.getByText("Request accepted", { exact: true }),
+  ).toBeVisible();
+  expect(state.holdPosts).toBe(1);
+  expect(state.intentPosts).toBe(1);
+  expect(state.records.size).toBe(1);
+  expect(state.unlockPosts).toHaveLength(1);
+  expect(state.unlockPosts[0]).not.toBe(creationKey);
+  await page.reload();
+  await expect(
+    page.getByText("Request accepted", { exact: true }),
+  ).toBeVisible();
+  expect(state.unlockPosts).toHaveLength(1);
 });

@@ -19,6 +19,7 @@ export type Reservation = {
 export type PendingHold = {
   requestKey: string;
   accessToken: string;
+  unlockRequestKey?: string;
   request?: { lockerId: string; startTime: string; endTime: string };
   reservation?: Reservation;
 };
@@ -68,6 +69,9 @@ function parse(raw: string): PendingHold[] {
         return {
           requestKey: r.requestKey,
           accessToken: r.accessToken,
+          ...(uuid.test(r.unlockRequestKey ?? "")
+            ? { unlockRequestKey: r.unlockRequestKey }
+            : {}),
           ...(r.request &&
           typeof r.request.lockerId === "string" &&
           [r.request.startTime, r.request.endTime].every(
@@ -132,14 +136,22 @@ export function newHold(
   return { requestKey: crypto.randomUUID(), accessToken, request };
 }
 export const recoveryCode = (r: PendingHold) =>
-  `LR1.${r.requestKey}.${r.accessToken}`;
+  `LR1.${r.requestKey}.${r.accessToken}${r.unlockRequestKey ? `.UK.${r.unlockRequestKey}` : ""}`;
 export function parseRecoveryCode(code: string): PendingHold | null {
-  const [version, requestKey, accessToken, extra] = code.trim().split(".");
+  const parts = code.trim().split(".");
+  const [version, requestKey, accessToken, marker, unlockRequestKey] = parts;
   return version === "LR1" &&
-    !extra &&
     uuid.test(requestKey ?? "") &&
-    token.test(accessToken ?? "")
-    ? { requestKey, accessToken }
+    token.test(accessToken ?? "") &&
+    (parts.length === 3 ||
+      (parts.length === 5 &&
+        marker === "UK" &&
+        uuid.test(unlockRequestKey ?? "")))
+    ? {
+        requestKey,
+        accessToken,
+        ...(unlockRequestKey ? { unlockRequestKey } : {}),
+      }
     : null;
 }
 function subscribe(update: () => void) {

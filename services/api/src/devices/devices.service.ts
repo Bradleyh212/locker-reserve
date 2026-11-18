@@ -7,6 +7,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { createHash } from 'crypto';
+import { Prisma } from '@prisma/client';
 import {
   reconciliationInput,
   unresolvedCommand,
@@ -199,6 +200,17 @@ export class DevicesService {
   }
 
   async enqueue(id: string, b: any, actor: string) {
+    return this.db.$transaction(async (tx) => {
+      const c = await this.createPulse(tx, id, b, actor);
+      return { commandId: c.id, status: 'QUEUED', expiresAt: c.expiresAt };
+    });
+  }
+  async checkPulse(
+    tx: Prisma.TransactionClient,
+    id: string,
+    b: { pulseMs: number; reason: string },
+    scope?: { lockerId: string; endTime: Date; reservationId: string },
+  ) {
     // Disabled by default. Operator must validate hardware and configure the same ceiling on ESP32.
     const limit = Number(process.env.DEVICE_MAX_PULSE_MS ?? 0);
     if (!Number.isInteger(limit) || limit <= 0 || limit > HARD_MAX_PULSE_MS)
@@ -216,70 +228,106 @@ export class DevicesService {
         'Provide a bounded pulseMs and audit reason',
       );
     }
-    return this.db.$transaction(async (tx) => {
-      // Serialize competing requests for this physical device, including across API processes.
-      await tx.$queryRaw`SELECT "id" FROM "LockerDevice" WHERE "id" = ${id} FOR UPDATE`;
-      const d = await tx.lockerDevice.findUnique({
-        where: { id },
-        include: {
-          locker: true,
-          commandReconciliations: {
-            orderBy: { acknowledgedAt: 'desc' },
-            take: 1,
-          },
+    // Serialize competing requests for this physical device, including across API processes.
+    await tx.$queryRaw`SELECT "id" FROM "LockerDevice" WHERE "id" = ${id} FOR UPDATE`;
+    const d = await tx.lockerDevice.findUnique({
+      where: { id },
+      include: {
+        locker: true,
+        commandReconciliations: {
+          orderBy: { acknowledgedAt: 'desc' },
+          take: 1,
         },
+      },
+    });
+    if (!d) throw new NotFoundException();
+    if (
+      !d.enabled ||
+      (scope && d.lockerId !== scope.lockerId) ||
+      !d.locker.isActive ||
+      !d.actuationEnabled ||
+      b.pulseMs > d.maxPulseMs
+    )
+      throw new ForbiddenException('Device is not armed or locker is inactive');
+    if (
+      !d.lastSeen ||
+      !isFresh(d.lastSeen) ||
+      d.outputState !== 'INACTIVE' ||
+      d.doorState !== 'CLOSED'
+    )
+      throw new ConflictException(
+        'Device is offline, active, or door is not CLOSED',
+      );
+    const recent = await tx.deviceCommand.findFirst({
+      where: { deviceId: id },
+      orderBy: { issuedAt: 'desc' },
+    });
+    const unresolved = await tx.deviceCommand.count({
+      where: {
+        AND: [
+          scope
+            ? { OR: [{ deviceId: id }, { lockerId: scope.lockerId }] }
+            : { deviceId: id },
+          unresolvedCommand,
+        ],
+      },
+    });
+    const review = scope
+      ? await tx.deviceCommandReconciliation.findFirst({
+          where: { command: { lockerId: scope.lockerId } },
+          orderBy: { acknowledgedAt: 'desc' },
+        })
+      : d.commandReconciliations[0];
+    if (review && (!d.lastSeen || d.lastSeen <= review.acknowledgedAt))
+      throw new ConflictException(
+        'Waiting for an accepted heartbeat after operator acknowledgement',
+      );
+    if (unresolved) {
+      throw new ConflictException(
+        'Cooldown or unresolved command; inspect the device before another request',
+      );
+    }
+
+    if (recent && Date.now() < cooldownEnd(recent))
+      throw new ConflictException({
+        code: 'COOLDOWN',
+        message: 'Waiting for cooldown',
+        retryAt: new Date(cooldownEnd(recent)),
       });
-      if (!d) throw new NotFoundException();
-      if (
-        !d.enabled ||
-        !d.locker.isActive ||
-        !d.actuationEnabled ||
-        b.pulseMs > d.maxPulseMs
-      )
-        throw new ForbiddenException(
-          'Device is not armed or locker is inactive',
-        );
-      if (
-        !d.lastSeen ||
-        !isFresh(d.lastSeen) ||
-        d.outputState !== 'INACTIVE' ||
-        d.doorState !== 'CLOSED'
-      )
-        throw new ConflictException(
-          'Device is offline, active, or door is not CLOSED',
-        );
-      const recent = await tx.deviceCommand.findFirst({
-        where: { deviceId: id },
-        orderBy: { issuedAt: 'desc' },
-      });
-      const unresolved = await tx.deviceCommand.count({
-        where: { deviceId: id, ...unresolvedCommand },
-      });
-      const review = d.commandReconciliations[0];
-      if (review && (!d.lastSeen || d.lastSeen <= review.acknowledgedAt))
-        throw new ConflictException(
-          'Waiting for an accepted heartbeat after operator acknowledgement',
-        );
-      if (unresolved || (recent && Date.now() < cooldownEnd(recent))) {
-        throw new ConflictException(
-          'Cooldown or unresolved command; inspect the device before another request',
-        );
-      }
-      const command = await tx.deviceCommand.create({
-        data: {
-          deviceId: id,
-          lockerId: d.lockerId,
-          requestedBy: actor,
-          reason: b.reason.trim(),
-          pulseMs: b.pulseMs,
-          expiresAt: new Date(Date.now() + COMMAND_TTL_MS),
-        },
-      });
-      return {
-        commandId: command.id,
-        status: 'QUEUED',
-        expiresAt: command.expiresAt,
-      };
+    const deadline = Math.min(
+      Date.now() + COMMAND_TTL_MS,
+      scope ? scope.endTime.getTime() - b.pulseMs : Infinity,
+    );
+    if (deadline <= Date.now())
+      throw new ConflictException('Insufficient time remaining for this pulse');
+    return { lockerId: d.lockerId, deadline };
+  }
+  async createPulse(
+    tx: Prisma.TransactionClient,
+    id: string,
+    b: { pulseMs: number; reason: string },
+    actor: string,
+    scope?: {
+      lockerId: string;
+      endTime: Date;
+      reservationId: string;
+      requestKey: string;
+    },
+  ) {
+    const { lockerId, deadline } = await this.checkPulse(tx, id, b, scope);
+    return tx.deviceCommand.create({
+      data: {
+        deviceId: id,
+        lockerId,
+        requestedBy: actor,
+        reason: b.reason.trim(),
+        pulseMs: b.pulseMs,
+        expiresAt: new Date(deadline),
+        ...(scope && {
+          reservationId: scope.reservationId,
+          requestKey: scope.requestKey,
+        }),
+      },
     });
   }
 
@@ -325,6 +373,17 @@ export class DevicesService {
         }))
       )
         return null;
+      if (
+        c.reservationId &&
+        (await tx.deviceCommand.count({
+          where: {
+            id: { not: c.id },
+            lockerId: c.lockerId,
+            ...unresolvedCommand,
+          },
+        }))
+      )
+        return null;
       const limit = Number(process.env.DEVICE_MAX_PULSE_MS ?? 0);
       if (
         !Number.isInteger(limit) ||
@@ -336,6 +395,56 @@ export class DevicesService {
         c.pulseMs > d.maxPulseMs
       )
         return null;
+      if (c.reservationId) {
+        // One final MVCC snapshot; never acquire reservation locks after the device lock.
+        const now = Date.now();
+        if (Number(process.env.CUSTOMER_UNLOCK_PULSE_MS) !== c.pulseMs)
+          return null;
+        const authorized = await tx.deviceCommand.count({
+          where: {
+            id: c.id,
+            reservationId: c.reservationId,
+            deviceId: id,
+            lockerId: c.lockerId,
+            pulseMs: c.pulseMs,
+            result: null,
+            reconciliation: { is: null },
+            expiresAt: { gt: new Date(now) },
+            device: {
+              is: {
+                enabled: true,
+                actuationEnabled: true,
+                lockerId: c.lockerId,
+                maxPulseMs: { gte: c.pulseMs },
+                doorState: 'CLOSED',
+                outputState: 'INACTIVE',
+                lastSeen: {
+                  gt: new Date(now - freshnessMs()),
+                  lte: new Date(now),
+                },
+                locker: { is: { isActive: true } },
+              },
+            },
+            reservation: {
+              is: {
+                lockerId: c.lockerId,
+                status: 'CONFIRMED',
+                startTime: { lte: new Date(now) },
+                endTime: { gt: new Date(now + c.pulseMs) },
+                access: {
+                  is: {
+                    paymentIntentId: { not: null },
+                    paidAt: { not: null },
+                    revokedAt: null,
+                    paymentState: 'SUCCEEDED',
+                  },
+                },
+              },
+            },
+          },
+        });
+        if (!authorized || Date.now() >= c.expiresAt.getTime()) return null;
+      }
       if (!c.deliveredAt) {
         await tx.deviceCommand.update({
           where: { id: c.id },
