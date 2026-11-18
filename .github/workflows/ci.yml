@@ -158,14 +158,18 @@ jobs:
           python-version: '3.12'
       - name: Shell syntax
         run: |
-          for script in scripts/*.sh firmware/scripts/*.sh; do sh -n "$script"; done
+          for script in scripts/*.sh scripts/staging/*.sh firmware/scripts/*.sh; do sh -n "$script"; done
       - name: Python syntax and supervisor tests
         run: |
-          python3 -m py_compile scripts/*.py
+          python3 -m py_compile scripts/*.py scripts/staging/*.py
           python3 scripts/test-dev-supervisor.py
       - name: Node helper syntax and tests
         run: |
           for script in scripts/*.cjs services/api/scripts/*.cjs; do node --check "$script"; done
           node --test scripts/dev-fetch-timeout.test.cjs
+      - name: Staging configuration safety (no services started)
+        run: |
+          node --test scripts/staging/runtime-config.test.cjs
+          python3 scripts/staging/test-preflight.py
       - name: Local Compose syntax (no services started)
         run: docker compose -f infra/local/docker-compose.yml config --quiet

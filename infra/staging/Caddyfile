@@ -1,0 +1,96 @@
+{
+	email {$ACME_EMAIL}
+	admin off
+}
+
+(proxy_headers) {
+	header_up X-Forwarded-Proto {scheme}
+	header_up X-Forwarded-For {remote_host}
+	header_up X-Forwarded-Host {host}
+	header_up -Forwarded
+}
+
+(site_security) {
+	tls {
+		protocols tls1.2 tls1.3
+		issuer {$TLS_ISSUER:acme}
+	}
+	header {
+		Strict-Transport-Security "max-age=86400"
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+		-Server
+		-X-Powered-By
+	}
+	log {
+		output stdout
+		format filter {
+			wrap json
+			fields {
+				request>uri delete
+				request>headers>Stripe-Signature delete
+			}
+		}
+	}
+}
+
+{$WEB_DOMAIN} {
+	import site_security
+	route {
+		@denied not remote_ip {$STAGING_ALLOWED_CIDRS:127.0.0.1/32}
+		respond @denied "Private staging" 403
+		handle_path /api/* {
+			reverse_proxy api-proxy:3001 {
+				import proxy_headers
+			}
+		}
+		handle {
+			reverse_proxy web-proxy:3000 {
+				import proxy_headers
+			}
+		}
+	}
+}
+
+{$API_DOMAIN} {
+	import site_security
+	route {
+		# These are the only internet-facing machine endpoints; application auth remains mandatory.
+		@webhook {
+			method POST
+			path /payments/webhook
+		}
+		handle @webhook {
+			request_body {
+				max_size 1MB
+			}
+			reverse_proxy api-proxy:3001 {
+				import proxy_headers
+			}
+		}
+		@device {
+			method GET POST
+			path /v1/device/heartbeat /v1/device/commands/next /v1/device/commands/*/result
+		}
+		handle @device {
+			request_body {
+				max_size 64KB
+			}
+			reverse_proxy api-proxy:3001 {
+				import proxy_headers
+			}
+		}
+		handle {
+			@denied not remote_ip {$STAGING_ALLOWED_CIDRS:127.0.0.1/32}
+			respond @denied "Private staging" 403
+			reverse_proxy api-proxy:3001 {
+				import proxy_headers
+			}
+		}
+	}
+}
+
+# Private container-only liveness endpoint, never published by Compose.
+http://:8080 {
+	respond /health "ok" 200
+}

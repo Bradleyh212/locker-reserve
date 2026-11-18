@@ -1,0 +1,127 @@
+name: locker-staging
+x-logs: &logs
+  driver: json-file
+  options: { max-size: "10m", max-file: "3" }
+x-app: &app
+  restart: unless-stopped
+  init: true
+  stop_grace_period: 30s
+  logging: *logs
+  security_opt: [no-new-privileges:true]
+services:
+  db:
+    <<: *app
+    image: ${POSTGRES_IMAGE:-postgres:16-bookworm@sha256:a49f7438ba03589f9b1ca062f2da82e899b48ea1dc50d2449fa09a70be83ebca}
+    environment:
+      POSTGRES_USER: locker
+      POSTGRES_DB: locker_staging
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+    secrets: [db_password]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    networks: [data]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U locker -d locker_staging"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  redis:
+    <<: *app
+    image: ${REDIS_IMAGE:-redis:7-bookworm@sha256:2e3eb11462c4e3759e6972678dd051d150ff54b1e60714b3c33b701260172a90}
+    command: [redis-server, --save, "", --appendonly, "no", --maxmemory, 128mb, --maxmemory-policy, noeviction]
+    networks: [data]
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  migrate:
+    image: locker-staging-migrate:${RELEASE_ID:?set RELEASE_ID}
+    build: { context: ../../services/api, target: migrator }
+    profiles: [tools]
+    environment:
+      STAGING_CONFIG_FILE: /run/secrets/api_config
+    secrets: [api_config]
+    networks: [data]
+    depends_on:
+      db: { condition: service_healthy }
+    logging: *logs
+  api:
+    <<: *app
+    image: locker-staging-api:${RELEASE_ID:?set RELEASE_ID}
+    build: { context: ../../services/api, target: runner }
+    environment:
+      STAGING_CONFIG_FILE: /run/secrets/api_config
+      NODE_ENV: production
+      PORT: "3001"
+      CORS_ORIGIN: https://${WEB_DOMAIN:?set WEB_DOMAIN}
+      TRUSTED_PROXY_IP: ${PROXY_IP:-172.30.88.2}
+      REDIS_URL: redis://redis:6379
+      DEVICE_MAX_PULSE_MS: "0"
+      CUSTOMER_UNLOCK_PULSE_MS: "0"
+    secrets: [api_config]
+    networks:
+      proxy: { aliases: [api-proxy] }
+      data: {}
+      outbound: {}
+    depends_on:
+      db: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3001/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+  web:
+    <<: *app
+    image: locker-staging-web:${RELEASE_ID:?set RELEASE_ID}
+    build:
+      context: ../../services/web
+      args:
+        NEXT_PUBLIC_API_BASE_URL: https://${WEB_DOMAIN:?set WEB_DOMAIN}/api
+        NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY:?set test publishable key}
+    networks:
+      proxy: { aliases: [web-proxy] }
+    volumes: [nextcache:/app/.next/cache]
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3000/book').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+  caddy:
+    <<: *app
+    image: ${CADDY_IMAGE:-caddy:2.10.2-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d}
+    environment:
+      WEB_DOMAIN: ${WEB_DOMAIN:?set WEB_DOMAIN}
+      API_DOMAIN: ${API_DOMAIN:?set API_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL}
+      STAGING_ALLOWED_CIDRS: ${STAGING_ALLOWED_CIDRS:-127.0.0.1/32}
+    ports: ["80:80", "443:443"]
+    volumes: ["./Caddyfile:/etc/caddy/Caddyfile:ro", "caddydata:/data", "caddyconfig:/config"]
+    networks:
+      proxy: { ipv4_address: "${PROXY_IP:-172.30.88.2}" }
+      outbound: {}
+    depends_on:
+      api: { condition: service_healthy }
+      web: { condition: service_healthy }
+    healthcheck:
+      test: [CMD, wget, -q, --spider, http://127.0.0.1:8080/health]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+networks:
+  proxy:
+    internal: true
+    ipam:
+      config: [{ subnet: "${PROXY_SUBNET:-172.30.88.0/24}", ip_range: "${PROXY_DYNAMIC_RANGE:-172.30.88.128/25}" }]
+  data: { internal: true }
+  outbound: {}
+volumes:
+  pgdata:
+  nextcache:
+  caddydata:
+  caddyconfig:
+secrets:
+  api_config: { file: "${API_CONFIG_FILE:?absolute private API JSON file}" }
+  db_password: { file: "${DB_PASSWORD_FILE:?absolute private DB password file}" }
