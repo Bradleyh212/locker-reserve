@@ -296,3 +296,12 @@ make rollback work.
   by this change. Exploitability has not been assessed here; separate dependency
   remediation/security review is needed before wider exposure. No dependency
   versions or deployed allowlist/authentication settings were changed.
+
+## Approved hosted follow-up — 2026-11-19
+
+See [hosted simulator results](esp32-cloud-hosted-validation-20261119.md) and the
+[dependency security review](../security/dependency-review-20261119.md). The user
+approved the isolated simulator lifecycle; it passed and was left revoked with
+audit history retained. These results supersede the earlier not-performed hosted
+simulator notes only; physical-device provisioning/flashing remains unapproved.
+No new server deployment was needed or performed.
