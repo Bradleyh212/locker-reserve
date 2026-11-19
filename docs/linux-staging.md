@@ -141,3 +141,14 @@ OVHcloud target: Ubuntu 24.04 with Docker Engine and Compose installed; operator
 
 
 Merge validation completed 2026-11-17 (`2ebc659` + main `f77582c`): both documentation/environment conflicts preserve the complete combined variable/comment set without duplicates. Passed 109 booking/payment/customer integration tests, 90 API unit/device/reconciliation/proxy tests, 2 HTTP smoke tests, all 50 browser tests, 8 runtime-config tests and 7 Compose preflight tests. API/web type checks, production builds, web lint, shell/Python syntax, firmware host tests and all three Linux Docker image builds passed. The disposable Caddy stack passed strict TLS/hostname verification, IP restrictions, signed raw webhook validation, secure admin cookies, ownership/recovery, paid digital-key reads and backup/restore/persistence. Customer and administrator unlock requests both returned 403 without creating commands; authenticated delivery of a synthetic queued pulse returned 204 and preserved its unknown outcome. Fresh seven-migration installation and six-to-seven upgrade passed, preserving synthetic command/reconciliation/event/health/payment records. The test harness now refuses pre-existing validation volumes as well as containers. No production secrets, local application database, Mac service, physical device or remote VPS was changed. Public DNS/ACME issuance, hosted Stripe test transactions and actual OVHcloud deployment remain operator-approved follow-up steps.
+
+## Cloud device preparation (2026-11-19)
+
+Follow [ESP32 cloud integration](embedded/esp32-cloud.md) for the dedicated cloud
+profile, verified public roots, safe provisioning and separate journal. Hosted
+staging is now deployed at `c7340a8`; the historical local-only status/validation
+notes above describe earlier work. Read-only verification found all five services
+healthy, both forced pulse limits zero and zero registered devices. No hosted
+identity is created by the preparation tooling or TLS check. Off-server paid
+backup storage is intentionally deferred for this disposable, no-real-customer
+staging environment; retained on-server backups are not disaster protection.

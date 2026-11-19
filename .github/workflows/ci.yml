@@ -163,6 +163,7 @@ jobs:
         run: |
           python3 -m py_compile scripts/*.py scripts/staging/*.py
           python3 scripts/test-dev-supervisor.py
+          python3 scripts/test-firmware-cloud.py
       - name: Node helper syntax and tests
         run: |
           for script in scripts/*.cjs services/api/scripts/*.cjs; do node --check "$script"; done

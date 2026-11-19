@@ -44,3 +44,5 @@ Reviewed against the repository on 2026-10-02. This update changes documentation
 
 - [Private Ubuntu HTTPS staging](linux-staging.md) — isolated Compose, Caddy, secrets, migration and recovery procedures.
 - [Customer digital keys](embedded/customer-unlock.md) — shared booking credentials, verified payment and explicit safe customer requests.
+
+- [ESP32 cloud integration](embedded/esp32-cloud.md) — strict public TLS, private cloud profile, staged provisioning and non-actuating cutover.

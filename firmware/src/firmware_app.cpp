@@ -20,6 +20,14 @@
 #include "../include/config.example.h"
 #endif
 
+// Keep the existing Mac journal by default. Cloud builds use an identity-scoped
+// namespace, so a pending Mac result is never submitted to a different database.
+#ifndef COMMAND_JOURNAL_NAMESPACE
+#define COMMAND_JOURNAL_NAMESPACE "locker-api"
+#endif
+static_assert(sizeof(COMMAND_JOURNAL_NAMESPACE) > 1 && sizeof(COMMAND_JOURNAL_NAMESPACE) <= 16,
+              "ESP32 NVS namespace must contain 1 to 15 characters");
+
 namespace locker::firmware {
 constexpr int OUTPUT_PIN = 26;
 constexpr int DOOR_PIN = 27;
@@ -588,7 +596,7 @@ void begin() {
 
   storageReady =
     prefs.begin(
-      "locker-api",
+      COMMAND_JOURNAL_NAMESPACE,
       false
     );
 
