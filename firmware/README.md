@@ -184,3 +184,11 @@ commit retains it for recovery: inspect the device row before retrying. Filesyst
 and database operations are not one atomic transaction. Errors use fixed messages
 rather than exposing raw database/connection details. Run its failure-path tests:
 `node --test services/api/scripts/provision-device.test.cjs`.
+
+## Private cloud staging profile
+
+Use the [cloud integration runbook](../docs/embedded/esp32-cloud.md) for OVHcloud.
+The cloud builder uses this same firmware, a separate private configuration and
+an identity-scoped NVS journal. It never replaces the Mac config or uploads a board.
+Cloud actuation is disabled with a zero ceiling. Existing builds without the new
+optional `COMMAND_JOURNAL_NAMESPACE` macro retain `locker-api` unchanged.

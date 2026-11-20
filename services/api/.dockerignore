@@ -8,3 +8,7 @@
 !prisma/**
 !scripts/
 !scripts/runtime-config.cjs
+
+# Privileged operator tooling is available only in the migrator image.
+!scripts/provision-device.cjs
+!scripts/staging-device.cjs
