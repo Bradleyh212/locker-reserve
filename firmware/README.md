@@ -65,7 +65,7 @@ No firmware upload or physical command is part of the automated verification.
 - Main sensor CLOSED requires 50 ms stable sampling. Opening immediately revokes
   CLOSED permission. A gap greater than 250 ms invalidates freshness, but retains
   the last debounced OPEN/CLOSED state. Boot has no reliable observation: UNKNOWN.
-  Heartbeat and pre-actuation paths re-sample for 55 ms after blocking operations.
+  A separate FreeRTOS task samples GPIO27 about every 10 ms, including during HTTPS.
   Heartbeats send UNKNOWN if sampling still has not settled (for example, bounce);
   retained historical CLOSED alone never authorizes actuation.
 - Serial diagnostics log debounced changes with uptime. Heartbeat logs display
@@ -73,8 +73,8 @@ No firmware upload or physical command is part of the automated verification.
 - API considers a heartbeat recent for less than 15 seconds. Enqueue **and delivery**
   require recent CLOSED, enabled device/locker, enabled actuation and inactive output.
   A heartbeat is an observation, not proof of the current mechanical latch state.
-- Before actuation, firmware re-samples for 55 ms after HTTPS/NVS operations and
-  rechecks CLOSED, Wi-Fi and expiry. The sensor alone never triggers an unlock.
+- Before actuation, firmware rechecks Wi-Fi, expiry, the live contact and the
+  freshness of the debounced CLOSED observation after HTTPS/NVS operations. The sensor alone never triggers an unlock.
 - Commands are consumed in NVS before activation. Duplicates/older commands,
   invalid targets, duration or expiry, unavailable storage and invalid TLS/API
   responses cannot start an output pulse. Pending reports block further polling.
