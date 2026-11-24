@@ -152,3 +152,5 @@ healthy, both forced pulse limits zero and zero registered devices. No hosted
 identity is created by the preparation tooling or TLS check. Off-server paid
 backup storage is intentionally deferred for this disposable, no-real-customer
 staging environment; retained on-server backups are not disaster protection.
+
+For the protected release pipeline, setup and rollback procedure, see [Staging continuous deployment](staging-cd.md).

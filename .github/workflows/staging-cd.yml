@@ -1,0 +1,64 @@
+name: Staging CD
+on:
+  workflow_call:
+    inputs:
+      manual:
+        required: true
+        type: boolean
+jobs:
+  publish:
+    if: github.repository == 'Bradleyh212/locker-reserve' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      api: ${{ steps.images.outputs.api }}
+      web: ${{ steps.images.outputs.web }}
+      migrate: ${{ steps.images.outputs.migrate }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Authenticate to GHCR
+        env:
+          TOKEN: ${{ github.token }}
+        run: printf '%s' "$TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+      - id: images
+        run: sh scripts/staging/release-images.sh publish
+        env:
+          NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${{ vars.STAGING_STRIPE_PUBLISHABLE_KEY }}
+
+  deploy:
+    needs: publish
+    if: (inputs.manual && vars.STAGING_MANUAL_ENABLED == 'true') || (github.event_name == 'push' && vars.STAGING_AUTO_ENABLED == 'true')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: staging
+    concurrency:
+      group: lockerreserve-staging-deployment
+      cancel-in-progress: false
+    permissions: {}
+    steps:
+      - name: Hand off the verified release
+        shell: bash
+        env:
+          HOST: ${{ vars.STAGING_SSH_HOST }}
+          KEY: ${{ secrets.STAGING_SSH_KEY }}
+          HOST_KEYS: ${{ secrets.STAGING_KNOWN_HOSTS }}
+          API: ${{ needs.publish.outputs.api }}
+          WEB: ${{ needs.publish.outputs.web }}
+          MIGRATE: ${{ needs.publish.outputs.migrate }}
+        run: |
+          set -euo pipefail
+          umask 077
+          tmp=$(mktemp -d)
+          trap 'rm -rf "$tmp"' EXIT
+          [[ "$HOST" =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]*$ ]]
+          printf '%s\n' "$KEY" > "$tmp/id"
+          printf '%s\n' "$HOST_KEYS" > "$tmp/hosts"
+          ssh -T -i "$tmp/id" -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=10 \
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$tmp/hosts" "ubuntu@$HOST" \
+            "deploy $GITHUB_SHA $API $WEB $MIGRATE"
+          printf 'Staging verified at `%s`\n' "$GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"

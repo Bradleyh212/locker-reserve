@@ -6,13 +6,18 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      deploy_staging:
+        description: Request the first environment-approved staging deployment from main
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   api:
@@ -174,3 +179,32 @@ jobs:
           python3 scripts/staging/test-preflight.py
       - name: Local Compose syntax (no services started)
         run: docker compose -f infra/local/docker-compose.yml config --quiet
+
+  staging-verification:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Validate workflow definitions
+        run: |
+          GOBIN="$RUNNER_TEMP/actionlint" go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
+          "$RUNNER_TEMP/actionlint/actionlint" -shellcheck= -pyflakes= .github/workflows/{ci,staging-cd}.yml
+      - run: python3 scripts/staging/test-cd.py
+      - if: github.event_name == 'pull_request'
+        run: sh scripts/staging/release-images.sh verify
+        env:
+          NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: pk_test_ci_fixture
+
+  release-staging:
+    if: github.repository == 'Bradleyh212/locker-reserve' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: [api, web, firmware, dev-tooling, staging-verification]
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/staging-cd.yml
+    with:
+      manual: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy_staging }}
