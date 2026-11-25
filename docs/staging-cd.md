@@ -14,6 +14,14 @@ GHCR package names are `ghcr.io/bradleyh212/locker-reserve-{api,web,migrate}`. T
 4. In the staging environment set variable `STAGING_SSH_HOST` to the existing SSH destination. Add secrets `STAGING_SSH_KEY` (dedicated forced-command private key) and `STAGING_KNOWN_HOSTS` (the corresponding verified host entry). Compare the server fingerprint through a trusted independent channel. Avoid using an administrator's personal key or trusting a fresh network scan alone.
 5. Allow this repository's Actions token to publish the three GHCR packages. For existing packages, grant this repository Actions write access. Give the VPS read-only access to private packages. Keep registry passwords, database credentials, device tokens and Stripe secret keys off the runner. The publisher uses its short-lived Actions token.
 
+### Troubleshooting SSH credentials
+
+The CI caller passes only the two named SSH secrets. The called deploy job selects the staging environment, where GitHub releases the environment values after approval. Keep both values under Settings → Environments → staging → Environment secrets. The publisher does not reference them. See [GitHub's reusable workflow secret rules](https://docs.github.com/en/actions/how-tos/reuse-automations/reuse-workflows).
+
+For missing-value errors, check the exact secret names above and the environment on the deploy job. For a key-format error, check that the existing dedicated key was stored as the original multiline private key usable by a noninteractive SSH client. For a host-pin error, check that the independently verified known_hosts entry matches the SSH host variable. GitHub displays secret names and update times only. Never paste a private key into logs or a support ticket.
+
+After review and merge, confirm automatic deployment is disabled. For an approved manual retry, start a **new CI workflow dispatch** from the updated main branch with deploy_staging selected and the manual switch enabled. Review the new SHA at the staging approval gate. Re-running a failed attempt uses its original workflow revision. Return the manual switch to false when the run ends.
+
 ## Server preparation (Phase B, after approval)
 
 Keep the existing live checkout, volumes, proxy and private configuration in place. Install the reviewed controller in a **separate root-owned checkout**, including its .git directory. The SSH account must have no write access to that checkout or its parent. A writable controller executed with sudo would grant root privileges.

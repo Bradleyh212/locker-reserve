@@ -1,6 +1,11 @@
 name: Staging CD
 on:
   workflow_call:
+    secrets:
+      STAGING_SSH_KEY:
+        required: true
+      STAGING_KNOWN_HOSTS:
+        required: true
     inputs:
       manual:
         required: true
@@ -52,12 +57,22 @@ jobs:
           MIGRATE: ${{ needs.publish.outputs.migrate }}
         run: |
           set -euo pipefail
+          : "${KEY:?Missing STAGING_SSH_KEY in the staging environment}"
+          : "${HOST_KEYS:?Missing STAGING_KNOWN_HOSTS in the staging environment}"
           umask 077
           tmp=$(mktemp -d)
           trap 'rm -rf "$tmp"' EXIT
           [[ "$HOST" =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]*$ ]]
           printf '%s\n' "$KEY" > "$tmp/id"
           printf '%s\n' "$HOST_KEYS" > "$tmp/hosts"
+          if ! ssh-keygen -y -P '' -f "$tmp/id" >/dev/null 2>&1; then
+            echo '::error::STAGING_SSH_KEY is unusable for unattended SSH.'
+            exit 1
+          fi
+          if ! ssh-keygen -F "$HOST" -f "$tmp/hosts" >/dev/null 2>&1; then
+            echo '::error::STAGING_KNOWN_HOSTS needs a pinned entry matching STAGING_SSH_HOST.'
+            exit 1
+          fi
           ssh -T -i "$tmp/id" -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=10 \
             -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$tmp/hosts" "ubuntu@$HOST" \
             "deploy $GITHUB_SHA $API $WEB $MIGRATE"

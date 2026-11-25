@@ -206,5 +206,8 @@ jobs:
       contents: read
       packages: write
     uses: ./.github/workflows/staging-cd.yml
+    secrets:
+      STAGING_SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+      STAGING_KNOWN_HOSTS: ${{ secrets.STAGING_KNOWN_HOSTS }}
     with:
       manual: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy_staging }}
