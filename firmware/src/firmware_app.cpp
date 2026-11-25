@@ -1,4 +1,7 @@
 #include <Arduino.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#include <freertos/queue.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
@@ -85,6 +88,10 @@ uint32_t reportLastAttempt = 0;
 uint32_t reportRetryDelay = 0;
 
 locker::DoorSensor sensor;
+// Best-effort diagnostic history only. Reports and authorization always use
+// the latest live sample, never this queue.
+QueueHandle_t reedTransitions = nullptr;
+portMUX_TYPE sensorMux = portMUX_INITIALIZER_UNLOCKED;
 locker::DoorHeartbeat doorHeartbeat;
 uint32_t lastPoll = 0;
 uint32_t lastReconnect = 0;
@@ -143,24 +150,41 @@ bool saveJournal() {
 // Reed sensor
 // --------------------------------------------------
 
-void readSensor() {
-  const auto before = sensor.state(millis());
-  sensor.sample(digitalRead(DOOR_PIN) == LOW, millis());
-  const auto after = sensor.state(millis());
-  if (before != after) {
-    Serial.printf("Reed debounced: %s at %lu ms\n",
-      after == locker::DoorState::Closed ? "CLOSED" : "OPEN",
-      static_cast<unsigned long>(millis()));
+// Only GPIO and a small value object are accessed under the spinlock. TLS,
+// Serial, NVS and the actuator stay on the Arduino loop task.
+void sampleDoorTask(void*) {
+  for (;;) {
+    portENTER_CRITICAL(&sensorMux);
+    const auto previous = sensor.sequence();
+    sensor.sample(digitalRead(DOOR_PIN) == LOW, millis());
+    const auto current = sensor;
+    portEXIT_CRITICAL(&sensorMux);
+    if (reedTransitions && current.sequence() != previous)
+      xQueueSend(reedTransitions, &current, 0);
+    vTaskDelay(pdMS_TO_TICKS(10) ? pdMS_TO_TICKS(10) : 1);
   }
 }
-// Only while output is inactive: get a fresh stable observation before reporting
-// or authorizing, even if a blocking HTTPS operation interrupted sampling.
-void refreshSensor() {
-  const uint32_t start = millis();
-  do { readSensor(); delay(1); } while (millis() - start < 55);
+
+locker::DoorSensor doorSnapshot() {
+  portENTER_CRITICAL(&sensorMux);
+  const auto snapshot = sensor;
+  portEXIT_CRITICAL(&sensorMux);
+  return snapshot;
 }
-const char* doorState() {
-  switch (sensor.state(millis())) {
+
+bool doorAllowsPulse() {
+  portENTER_CRITICAL(&sensorMux);
+  const auto now = millis();
+  // Include the current pin level even if a transition happened since the
+  // sampler last ran. A CLOSED pin alone cannot refresh a stalled sampler.
+  if (digitalRead(DOOR_PIN) != LOW) sensor.sample(false, now);
+  const bool allowed = sensor.canUnlock(now);
+  portEXIT_CRITICAL(&sensorMux);
+  return allowed;
+}
+
+const char* doorState(locker::DoorState state) {
+  switch (state) {
     case locker::DoorState::Closed: return "CLOSED";
     case locker::DoorState::Open: return "OPEN";
     default: return "UNKNOWN";
@@ -217,8 +241,9 @@ int request(
     return diagnostics.observeHttp(-1);
   }
 
-  Serial.print("Request: ");
-  Serial.println(url);
+  const char* operation = path == "/v1/device/heartbeat" ? "heartbeat" :
+    path == "/v1/device/commands/next" ? "poll" : "result";
+  const uint32_t started = millis();
 
   if (!http.begin(client, url)) {
     Serial.println("HTTP begin() failed");
@@ -252,6 +277,8 @@ int request(
   }
 
   http.end();
+  Serial.printf("HTTP %s status=%d duration_ms=%lu\n", operation, code,
+                static_cast<unsigned long>(millis() - started));
 
   return diagnostics.observeHttp(code);
 }
@@ -261,21 +288,27 @@ int request(
 // Heartbeat
 // --------------------------------------------------
 
-void heartbeat() {
-  refreshSensor();
-  const uint32_t sampledAt = millis();
-  const auto observed = sensor.fresh(sampledAt) ? sensor.state(sampledAt) : locker::DoorState::Unknown;
-  const String reportedDoor = observed == locker::DoorState::Unknown ? "UNKNOWN" : doorState();
+void heartbeat(const locker::DoorSensor& snapshot) {
   timeval sampledTime{};
   gettimeofday(&sampledTime, nullptr);
-  if (!sensor.fresh(millis())) Serial.println("Reed unsettled: heartbeat reports UNKNOWN; output remains inhibited");
+  const uint32_t started = millis();
+  const auto observed = snapshot.fresh(started) ? snapshot.state(started) : locker::DoorState::Unknown;
+  const char* reportedDoor = doorState(observed);
+  const uint32_t sampleAge = started - snapshot.sampledAt();
+  // UNKNOWN records the current inability to confirm the level. A known
+  // observation uses the sample's time, never the later HTTP completion time.
+  const double observedAtMs = sampledTime.tv_sec * 1000.0 + sampledTime.tv_usec / 1000 -
+    (observed == locker::DoorState::Unknown ? 0 : sampleAge);
+  Serial.printf("Reed seq=%lu state=%s raw_edge_ms=%lu stable_ms=%lu sample_ms=%lu scheduled_ms=%lu\n",
+    (unsigned long)snapshot.sequence(), reportedDoor, (unsigned long)snapshot.edgeAt(),
+    (unsigned long)snapshot.stableAt(), (unsigned long)snapshot.sampledAt(), (unsigned long)started);
   cJSON* b = cJSON_CreateObject();
-  cJSON_AddNumberToObject(b, "observedAtMs", sampledTime.tv_sec * 1000.0 + sampledTime.tv_usec / 1000);
+  cJSON_AddNumberToObject(b, "observedAtMs", observedAtMs);
 
   cJSON_AddStringToObject(
     b,
     "doorState",
-    reportedDoor.c_str()
+    reportedDoor
   );
 
   cJSON_AddStringToObject(
@@ -322,15 +355,10 @@ void heartbeat() {
     ack && cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(ack, "accepted")),
     ack && cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(ack, "ignored")));
   cJSON_Delete(ack);
-  doorHeartbeat.attempted(sampledAt, observed, diagnostics.heartbeatAccepted);
-#ifdef LOCKER_DOOR_TIMING
-  Serial.printf("Door report sampled=%lu ack=%lu ms\n", (unsigned long)sampledAt, (unsigned long)millis());
-#endif
-  Serial.printf(
-    "Heartbeat HTTP %d; contact %s; output inactive\n",
-    code,
-    reportedDoor.c_str()
-  );
+  doorHeartbeat.attempted(started, observed, diagnostics.heartbeatAccepted);
+  Serial.printf("Reed seq=%lu response_ms=%lu accepted=%d\n", (unsigned long)snapshot.sequence(),
+    (unsigned long)millis(), diagnostics.heartbeatAccepted);
+
 }
 
 
@@ -504,10 +532,8 @@ void poll() {
   }
 
   // Require a fresh stable CLOSED, independent of the historical display state.
-  refreshSensor();
-  if (!sensor.canUnlock(millis()) ||
-      WiFi.status() != WL_CONNECTED ||
-      expires <= (int64_t)time(nullptr) * 1000 + 1000) {
+  if (WiFi.status() != WL_CONNECTED ||
+      expires <= (int64_t)time(nullptr) * 1000 + 1000 || !doorAllowsPulse()) {
     outcome = "REJECTED";
     outcomeReason = "DOOR_NOT_CLOSED_OR_EXPIRED_OR_OFFLINE";
     if (!saveJournal()) storageReady = false;
@@ -698,21 +724,12 @@ void begin() {
 
   // Reed sensor initial state
 
-  readSensor();
+  reedTransitions = xQueueCreate(16, sizeof(locker::DoorSensor));
+  if (xTaskCreate(sampleDoorTask, "reed", 2048, nullptr, 2, nullptr) != pdPASS) {
+    Serial.println("Reed sampler unavailable; contact UNKNOWN and output inhibited");
+  }
 
-  // --------------------------------------------------
-  // WIFI DEBUG
-  // --------------------------------------------------
-
-  Serial.println();
-  Serial.print(
-    "Connecting to WiFi SSID: "
-  );
-
-  Serial.println(
-    WIFI_SSID
-  );
-
+  Serial.println("Connecting to WiFi");
   WiFi.mode(
     WIFI_STA
   );
@@ -883,8 +900,6 @@ void begin() {
 void run() {
   diagnostics.observeWifi(WiFi.status() == WL_CONNECTED);
 
-  readSensor();
-
 
   bool wasActive =
     actuator
@@ -946,6 +961,15 @@ void run() {
 
 
   // --------------------------------------------------
+  // Drain a bounded number per pass and only with output inactive. Sequence
+  // gaps identify diagnostic entries dropped during a long network operation.
+  locker::DoorSensor event;
+  for (int i = 0; i < 16 && reedTransitions && xQueueReceive(reedTransitions, &event, 0); ++i) {
+    Serial.printf("Reed transition seq=%lu state=%s first_raw_ms=%lu debounced_ms=%lu\n",
+      (unsigned long)event.sequence(), doorState(event.state(event.stableAt())),
+      (unsigned long)event.edgeAt(), (unsigned long)event.stableAt());
+  }
+
   // WIFI RECONNECT
   // --------------------------------------------------
 
@@ -981,8 +1005,15 @@ void run() {
   // HEARTBEAT
   // --------------------------------------------------
 
-  if (doorHeartbeat.due(sensor.state(millis()), sensor.fresh(millis()), millis())) {
-    heartbeat();
+  const auto snapshot = doorSnapshot();
+  const uint32_t now = millis();
+  if (doorHeartbeat.due(snapshot.state(now), snapshot.fresh(now), now)) {
+    heartbeat(snapshot);
+    // Give a transition captured during the POST priority over starting a
+    // second blocking operation. Periodic retries alone must not starve polls.
+    const auto latest = doorSnapshot();
+    if (diagnostics.heartbeatAccepted && latest.fresh(millis()) &&
+        latest.sequence() != snapshot.sequence()) return;
   }
 
 

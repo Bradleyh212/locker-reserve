@@ -14,7 +14,7 @@ int main() {
   };
   acknowledge(0, locker::DoorState::Closed, 200, true, false);
   assert(diagnostics.canPoll(true) && !diagnostics.canPoll(false));
-  assert(!heartbeat.due(locker::DoorState::Open, true, 499));
+  assert(heartbeat.due(locker::DoorState::Open, true, 499));
   assert(heartbeat.due(locker::DoorState::Open, true, 500));
 
   // An ignored, malformed, negative or failed acknowledgement closes the

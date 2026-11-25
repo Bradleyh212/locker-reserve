@@ -14,11 +14,21 @@ class DoorSensor {
     rawClosed_ = closed;
     sampledAt_ = now;
     if (now - changedAt_ >= 50) {
-      stable_ = closed ? DoorState::Closed : DoorState::Open;
+      const auto next = closed ? DoorState::Closed : DoorState::Open;
+      if (next != stable_) {
+        stable_ = next;
+        edgeAt_ = changedAt_;
+        stableAt_ = now;
+        ++sequence_;
+      }
       settling_ = false;
     }
   }
   DoorState state(std::uint32_t) const { return stable_; }
+  std::uint32_t sampledAt() const { return sampledAt_; }
+  std::uint32_t edgeAt() const { return edgeAt_; }
+  std::uint32_t stableAt() const { return stableAt_; }
+  std::uint32_t sequence() const { return sequence_; }
   bool fresh(std::uint32_t now) const {
     return initialized_ && !settling_ && now - sampledAt_ <= 250;
   }
@@ -28,6 +38,7 @@ class DoorSensor {
  private:
   bool initialized_ = false, settling_ = true, rawClosed_ = false;
   DoorState stable_ = DoorState::Unknown;
+  std::uint32_t edgeAt_ = 0, stableAt_ = 0, sequence_ = 0;
   std::uint32_t changedAt_ = 0, sampledAt_ = 0;
 };
 }

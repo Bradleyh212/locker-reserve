@@ -9,9 +9,9 @@ class DoorHeartbeat {
   void disconnected() { resync_ = true; }
   bool due(DoorState current, bool fresh, std::uint32_t now) const {
     const auto elapsed = now - attemptedAt_;
-    if (!attempted_) return true;
+    if (!attempted_ || resync_) return true;
     if (elapsed >= 5000) return true;  // periodic fallback, including failures
-    return accepted_ && elapsed >= 500 && (resync_ || (fresh && current != reported_));
+    return accepted_ && fresh && current != reported_;
   }
   void attempted(std::uint32_t now, DoorState reported, bool accepted) {
     attemptedAt_ = now;

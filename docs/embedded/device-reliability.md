@@ -76,7 +76,7 @@ Updated firmware waits for an accepted heartbeat before polling for new commands
 
 GPIO26 remains LOW at boot, GPIO27 retains INPUT_PULLUP/debounce, and the 5000 ms ceiling and CLOSED-only unlock rules remain. Existing main cooldown stays unchanged, including its non-production, opt-in five-second bench cooldown measured from completion reporting. Production retains the existing thirty-second cooldown behavior.
 
-Main’s expedited scheduler remains: debounced door changes and reconnect resynchronization can trigger a heartbeat after 500 ms following an accepted attempt, with a five-second periodic fallback, including failures. The same parsed acknowledgement (`HTTP 200`, `accepted: true`, no `ignored: true`) updates scheduling and the command gate. Failed, malformed or ignored acknowledgements close the gate; disconnects close it until another heartbeat is accepted. Result reporting remains possible while the new-command gate is closed. HTTP, TLS and reconnect work stay below the active-solenoid early return.
+Debounced door changes after an accepted heartbeat and reconnect resynchronization are eligible on the next free network pass. A five-second periodic fallback covers failures. The same parsed acknowledgement (`HTTP 200`, `accepted: true`, no `ignored: true`) updates scheduling and the command gate. Failed, malformed or ignored acknowledgements close the gate; disconnects close it until another heartbeat is accepted. Result reporting remains possible while the new-command gate is closed. HTTP, TLS and reconnect work stay below the active-solenoid early return.
 
 ## OTA integration
 

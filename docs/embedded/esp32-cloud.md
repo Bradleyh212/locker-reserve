@@ -7,7 +7,7 @@ configuration and command history remain intact. No schema migration is needed.
 ## Boundaries and audit
 
 The main firmware already supports HTTPS with `setCACert`, hostname validation,
-NTP before requests, authenticated heartbeats, 500 ms expedited contact reports
+NTP before requests, authenticated heartbeats, expedited contact reports
 with a 5 s fallback, boot diagnostics, reconnect recovery and accepted-heartbeat
 polling inhibition. A 200 alone is insufficient: JSON must explicitly accept the
 heartbeat/result. Samples retain timestamp ordering/freshness validation. Requests
