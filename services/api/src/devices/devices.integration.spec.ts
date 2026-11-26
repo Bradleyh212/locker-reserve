@@ -1,4 +1,7 @@
 import 'dotenv/config';
+import { mkdtemp, rm, writeFile } from 'fs/promises';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import { Test } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -58,6 +61,53 @@ suite('device HTTP + PostgreSQL integration', () => {
     if (app) await app.close();
     if (priorLimit === undefined) delete process.env.DEVICE_MAX_PULSE_MS;
     else process.env.DEVICE_MAX_PULSE_MS = priorLimit;
+  });
+  it('requires approval and authenticated delivery, progress and confirmed boot for one device', async () => {
+    const http = request(app.getHttpServer());
+    const auth = 'Bearer ' + token;
+    const folder = await mkdtemp(join(tmpdir(), 'ota-http-test-'));
+    const oldEnabled = process.env.OTA_ENABLED, oldDir = process.env.FIRMWARE_RELEASE_DIR;
+    try {
+      process.env.FIRMWARE_RELEASE_DIR = folder;
+      process.env.OTA_ENABLED = 'false';
+      await http.get('/v1/device/firmware/next').set('Authorization', auth).expect(403);
+      process.env.OTA_ENABLED = 'true';
+      await http.get('/v1/device/firmware/next').expect(401);
+      await http.get('/v1/device/firmware/next').set('Authorization', auth).expect(204);
+      const image = Buffer.from('fixture-only application');
+      await writeFile(join(folder, 'fixture.bin'), image);
+      const release = await db.firmwareRelease.create({ data: {
+        deviceId, fileName: 'fixture.bin', version: 'test-2', buildNumber: 2,
+        sha256: createHash('sha256').update(image).digest('hex'), sizeBytes: image.length,
+      } });
+      await db.lockerDevice.update({ where: { id: deviceId }, data: {
+        lastSeen: new Date(), outputState: 'INACTIVE', actuationEnabled: false, maxPulseMs: 0,
+      } });
+      const approval = '/v1/admin/devices/' + deviceId + '/firmware-updates';
+      const selection = { releaseId: release.id, reason: 'supervised test' };
+      await http.post(approval).send(selection).expect(401);
+      const job = await http.post(approval).set('Cookie', cookie).send(selection).expect(202);
+      await http.post(approval).set('Cookie', cookie).send(selection).expect(409);
+      const manifest = await http.get('/v1/device/firmware/next').set('Authorization', auth).expect(200);
+      expect(manifest.body.updateId).toBe(job.body.id);
+      const url = '/v1/device/firmware/updates/' + job.body.id;
+      const download = await http.get(url + '/download').set('Authorization', auth).expect(200);
+      expect(download.body).toEqual(image);
+      await writeFile(join(folder, 'fixture.bin'), Buffer.alloc(image.length));
+      await http.get(url + '/download').set('Authorization', auth).expect(409);
+      await http.post(url + '/progress').set('Authorization', auth).send({ stage: 'VERIFYING' }).expect(200);
+      await http.post(url + '/result').set('Authorization', auth)
+        .send({ result: 'UPDATED', firmwareVersion: 'wrong' }).expect(409);
+      await http.post(url + '/result').set('Authorization', auth)
+        .send({ result: 'UPDATED', firmwareVersion: release.version }).expect(200);
+      await http.get(url + '/download').set('Authorization', auth).expect(404);
+    } finally {
+      if (oldEnabled === undefined) delete process.env.OTA_ENABLED; else process.env.OTA_ENABLED = oldEnabled;
+      if (oldDir === undefined) delete process.env.FIRMWARE_RELEASE_DIR; else process.env.FIRMWARE_RELEASE_DIR = oldDir;
+      await db.firmwareUpdate.deleteMany({ where: { deviceId } });
+      await db.firmwareRelease.deleteMany({ where: { deviceId } });
+      await rm(folder, { recursive: true, force: true });
+    }
   });
   it('preserves the latest contact across delayed, duplicate, and dropped reports', async () => {
     const http = app.getHttpServer();

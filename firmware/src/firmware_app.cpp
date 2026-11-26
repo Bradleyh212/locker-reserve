@@ -23,13 +23,22 @@
 #include "../include/config.example.h"
 #endif
 
+#include "../include/version.h"
+#include "../include/ota_update.h"
+#if OTA_ENABLED
+#include "../include/ota_identity.h"
+static_assert(!ACTUATION_ENABLED && MAX_PULSE_MS == 0, "OTA supports the non-actuating profile only");
+#endif
+
 // Keep the existing Mac journal by default. Cloud builds use an identity-scoped
 // namespace, so a pending Mac result is never submitted to a different database.
 #ifndef COMMAND_JOURNAL_NAMESPACE
 #define COMMAND_JOURNAL_NAMESPACE "locker-api"
 #endif
+#if !OTA_ENABLED
 static_assert(sizeof(COMMAND_JOURNAL_NAMESPACE) > 1 && sizeof(COMMAND_JOURNAL_NAMESPACE) <= 16,
               "ESP32 NVS namespace must contain 1 to 15 characters");
+#endif
 
 namespace locker::firmware {
 constexpr int OUTPUT_PIN = 26;
@@ -320,7 +329,11 @@ void heartbeat(const locker::DoorSensor& snapshot) {
   cJSON_AddStringToObject(
     b,
     "firmwareVersion",
+    #if OTA_ENABLED
+    FIRMWARE_VERSION
+#else
     "locker-firmware-0.2"
+#endif
   );
 
   cJSON_AddBoolToObject(
@@ -618,6 +631,14 @@ void begin() {
     &controller;
 
 
+#if OTA_ENABLED
+  if (!locker::identity::load()) {
+    Serial.println("OTA profile missing or invalid; USB provisioning required");
+    // A pending trial must reboot so the bootloader can restore the previous slot.
+    ESP.restart();
+  }
+  Serial.println(OTA_IMAGE_MARKER);
+#endif
   // Persistent storage
 
   storageReady =
@@ -729,6 +750,12 @@ void begin() {
     Serial.println("Reed sampler unavailable; contact UNKNOWN and output inhibited");
   }
 
+#if OTA_ENABLED
+  otaBegin({&prefs, request, []() -> uint32_t { return millis(); },
+            []() { return actuator->outputState() == locker::OutputState::Inactive &&
+                          !pendingReport && !reportBlocked && diagnostics.heartbeatAccepted; }},
+           storageReady, false, false);
+#endif
   Serial.println("Connecting to WiFi");
   WiFi.mode(
     WIFI_STA
@@ -898,6 +925,7 @@ void begin() {
 // --------------------------------------------------
 
 void run() {
+  otaCheckHealth();
   diagnostics.observeWifi(WiFi.status() == WL_CONNECTED);
 
 
@@ -1009,6 +1037,8 @@ void run() {
   const uint32_t now = millis();
   if (doorHeartbeat.due(snapshot.state(now), snapshot.fresh(now), now)) {
     heartbeat(snapshot);
+    otaMarkHealthy(diagnostics.heartbeatAccepted && doorSnapshot().fresh(millis()),
+                   storageReady, WiFi.status() == WL_CONNECTED, time(nullptr) >= 1767225600);
     // Give a transition captured during the POST priority over starting a
     // second blocking operation. Periodic retries alone must not starve polls.
     const auto latest = doorSnapshot();
@@ -1045,6 +1075,10 @@ void run() {
     }
   }
 
+
+  if (!otaHealthGateOpen() && actuator->outputState() == locker::OutputState::Inactive)
+    otaPoll(storageReady, pendingReport || reportBlocked, WiFi.status() == WL_CONNECTED,
+            time(nullptr) >= 1767225600);
 
   delay(1);
 }

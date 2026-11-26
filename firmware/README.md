@@ -192,3 +192,5 @@ The cloud builder uses this same firmware, a separate private configuration and
 an identity-scoped NVS journal. It never replaces the Mac config or uploads a board.
 Cloud actuation is disabled with a zero ceiling. Existing builds without the new
 optional `COMMAND_JOURNAL_NAMESPACE` macro retain `locker-api` unchanged.
+
+For the opt-in non-actuating update path, see [Supervised staging OTA](../docs/embedded/supervised-ota.md).

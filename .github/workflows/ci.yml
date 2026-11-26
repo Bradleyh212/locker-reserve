@@ -146,6 +146,18 @@ jobs:
           arduino-cli core install "esp32:esp32@$ARDUINO_CORE_VERSION" --additional-urls "$ARDUINO_INDEX_URL"
       - name: Compile main firmware and diagnostics without private config
         run: python3 scripts/ci-firmware.py
+      - name: Build and verify the credential-free OTA application
+        run: |
+          python3 scripts/ota-build.py --build "$GITHUB_RUN_NUMBER" --output "$RUNNER_TEMP/ota"
+          (cd "$RUNNER_TEMP/ota" && sha256sum -c SHA256SUMS)
+      - name: Retain application from protected main
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: locker-esp32-${{ github.sha }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/ota/
+          retention-days: 30
+          if-no-files-found: error
 
   dev-tooling:
     name: dev-tooling

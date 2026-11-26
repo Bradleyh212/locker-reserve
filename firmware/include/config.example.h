@@ -1,5 +1,6 @@
 #pragma once
 // Copy to config.local.h (ignored by Git). Never commit Wi-Fi or device credentials.
+#define OTA_ENABLED 0
 #define WIFI_SSID ""
 #define WIFI_PASSWORD ""
 #define API_BASE_URL "https://YOUR_MAC_LAN_IP:3443"

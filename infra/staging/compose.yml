@@ -38,6 +38,7 @@ services:
     image: locker-staging-migrate:${RELEASE_ID:?set RELEASE_ID}
     build: { context: ../../services/api, target: migrator }
     profiles: [tools]
+    volumes: ["firmware:/firmware"]
     environment:
       STAGING_CONFIG_FILE: /run/secrets/api_config
     secrets: [api_config]
@@ -51,6 +52,8 @@ services:
     build: { context: ../../services/api, target: runner }
     environment:
       STAGING_CONFIG_FILE: /run/secrets/api_config
+      OTA_ENABLED: ${OTA_ENABLED:-false}
+      FIRMWARE_RELEASE_DIR: /firmware
       NODE_ENV: production
       PORT: "3001"
       CORS_ORIGIN: https://${WEB_DOMAIN:?set WEB_DOMAIN}
@@ -59,6 +62,7 @@ services:
       DEVICE_MAX_PULSE_MS: "0"
       CUSTOMER_UNLOCK_PULSE_MS: "0"
     secrets: [api_config]
+    volumes: ["firmware:/firmware:ro"]
     networks:
       proxy: { aliases: [api-proxy] }
       data: {}
@@ -118,6 +122,7 @@ networks:
   data: { internal: true }
   outbound: {}
 volumes:
+  firmware:
   pgdata:
   nextcache:
   caddydata:
