@@ -40,12 +40,17 @@ PROXY_SUBNET=172.30.91.0/24
 PROXY_DYNAMIC_RANGE=172.30.91.128/25
 PROXY_IP=172.30.91.2
 ''')
+    import maintenance
+    legacy = temporary/'legacy-Caddyfile'
+    reviewed = (root/'infra/staging/Caddyfile').read_text()
+    legacy.write_text(reviewed.replace(maintenance.OTA_PATHS, ''))
     def write_override(allow):
         override.write_text(f'''services:
   caddy:
     environment:
       TLS_ISSUER: internal
       STAGING_ALLOWED_CIDRS: {allow}
+    volumes: ["{legacy}:/etc/caddy/Caddyfile:ro"]
     ports: !override
       - '127.0.0.1:58080:80'
       - '127.0.0.1:58443:443'
@@ -85,6 +90,9 @@ PROXY_IP=172.30.91.2
             if status(host,path,{'X-Forwarded-For':'192.0.2.1'})!=403: raise RuntimeError('Private boundary bypass')
         if status('api-staging.localhost','/v1/device/commands/next')!=401: raise RuntimeError('Device auth bypass')
         print('PASS private pages/admin blocked, spoofing rejected, device auth retained',flush=True)
+        from maintenance_fixture import exercise, exercise_proxy
+        fixture_env = {**env, 'STAGING_IMAGES_FILE': str(override)}
+        exercise_proxy(temporary, fixture_env, status)
         networks=json.loads(subprocess.check_output(['docker','inspect',project+'-caddy-1','--format','{{json .NetworkSettings.Networks}}']))
         gateway=networks[project+'_outbound']['Gateway']
         write_override(gateway+'/32')
@@ -92,6 +100,7 @@ PROXY_IP=172.30.91.2
         compose('exec','-T','web','node','-e',"fetch('http://api-proxy:3001/public/reservations/hold',{method:'POST',headers:{'Content-Type':'application/json','X-Forwarded-Proto':'https'},body:'{}'}).then(r=>{if(r.status!==403)process.exit(1)})")
         compose('exec','-T','web','node','-e',"const fs=require('fs');fs.writeFileSync('/app/.next/cache/fixture','cache-writable');fs.unlinkSync('/app/.next/cache/fixture')")
         subprocess.run(['python3',str(root/'scripts/staging/smoke.py'),'--ca',str(ca)],env=env,check=True)
+        exercise(temporary, fixture_env, a.release_id)
         dump=temporary/'fixture.dump'
         subprocess.run(['sh',str(root/'scripts/staging/backup.sh'),str(dump)],env=env,check=True)
         subprocess.run(['sh',str(root/'scripts/staging/restore-check.sh'),str(dump)],env=env,check=True)

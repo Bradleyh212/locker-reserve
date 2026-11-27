@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import cd
+import maintenance
 
 
 class ReleaseTest(unittest.TestCase):
@@ -35,6 +36,43 @@ class ReleaseTest(unittest.TestCase):
                         'deploy ' + self.sha + (' ' + self.digest) * 3 + ' ; id']:
             with self.assertRaises(cd.ReleaseError):
                 cd.parse(invalid)
+
+    def test_operator_commands_are_never_valid_ssh_requests(self):
+        for command in ('open', 'close', 'proxy-apply', 'proxy-recover', 'backup', 'restore-check'):
+            with self.assertRaises(cd.ReleaseError):
+                cd.parse(command)
+
+    def test_ota_recovery_and_release_interlock(self):
+        with patch.object(maintenance, 'apply_api', side_effect=[ValueError(), None]) as apply:
+            with self.assertRaises(ValueError):
+                maintenance.window('true', self.refs)
+            self.assertEqual([c.args[0] for c in apply.call_args_list], ['true', 'false'])
+        cd.require_closed_window()
+        with patch.object(maintenance, 'apply_api', side_effect=ValueError()):
+            with self.assertRaises(ValueError):
+                maintenance.window('false', self.refs)
+        with self.assertRaises(cd.ReleaseError):
+            cd.require_closed_window()
+        with patch.object(maintenance, 'apply_api'):
+            maintenance.window('false', self.refs)
+        cd.require_closed_window()
+
+    def test_proxy_validation_and_switch_failures(self):
+        reviewed = (cd.ROOT/'infra/staging/Caddyfile').read_bytes()
+        previous = reviewed.replace(maintenance.OTA_PATHS.encode(), b'')
+        with patch.object(maintenance, 'proxy_config', return_value=('fixture', previous)), \
+             patch.object(maintenance, 'validate_proxy') as validate, \
+             patch.object(maintenance, 'proxy_switch') as switch:
+            validate.side_effect = cd.ReleaseError('invalid configuration')
+            with self.assertRaises(cd.ReleaseError):
+                maintenance.proxy('proxy-apply')
+            switch.assert_not_called()
+            validate.side_effect = None
+            switch.side_effect = [cd.ReleaseError('startup failed'), None]
+            with self.assertRaises(cd.ReleaseError):
+                maintenance.proxy('proxy-apply')
+            self.assertEqual([call.args[1] for call in switch.call_args_list], [True, False])
+            self.assertEqual(switch.call_args.args[0].read_bytes(), previous)
 
     def test_healthy_release_and_retry(self):
         self.deploy()

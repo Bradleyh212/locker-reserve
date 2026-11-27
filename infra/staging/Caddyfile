@@ -70,7 +70,7 @@
 		}
 		@device {
 			method GET POST
-			path /v1/device/heartbeat /v1/device/commands/next /v1/device/commands/*/result
+			path /v1/device/firmware/next /v1/device/firmware/updates/*/download /v1/device/firmware/updates/*/progress /v1/device/firmware/updates/*/result /v1/device/heartbeat /v1/device/commands/next /v1/device/commands/*/result
 		}
 		handle @device {
 			request_body {

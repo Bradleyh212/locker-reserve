@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Upgrade six staging migrations to PR #14 in a new fixture database only."""
+"""Upgrade six staging migrations through the seven-migration baseline and OTA in a new fixture database only."""
 import json
 import os
 from pathlib import Path
@@ -23,7 +23,7 @@ run('exec','-T','db','createdb','-U','locker','staging_upgrade_fixture')
 source = root/'services/api/prisma'
 new_migration = '20261116000000_customer_command_access'
 migrations = sorted(p for p in (source/'migrations').iterdir() if p.is_dir())
-if len(migrations) != 7 or migrations[-1].name != new_migration:
+if len(migrations) != 8 or migrations[-2].name != new_migration or migrations[-1].name != '20261126000000_firmware_ota':
     raise SystemExit('Review migration fixture baseline for changed history')
 with tempfile.TemporaryDirectory(prefix='staging-migrations-') as directory:
     target = Path(directory)
@@ -31,7 +31,7 @@ with tempfile.TemporaryDirectory(prefix='staging-migrations-') as directory:
     shutil.copy(source/'schema.prisma', target/'schema.prisma')
     (target/'migrations').mkdir()
     shutil.copy(source/'migrations/migration_lock.toml', target/'migrations/migration_lock.toml')
-    for migration in migrations[:-1]:
+    for migration in migrations[:-2]:
         shutil.copytree(migration, target/'migrations'/migration.name)
     def migrate():
         run('run','--rm','--no-deps','-e','STAGING_CONFIG_FILE=',
@@ -56,12 +56,15 @@ INSERT INTO "CustomerReservationAccess" ("reservationId","tokenHash","paymentInt
 'health',(SELECT to_jsonb(h) FROM "DeviceHealth" h WHERE "deviceId"='upgrade-fixture'),
 'access',(SELECT to_jsonb(a) FROM "CustomerReservationAccess" a WHERE "reservationId"='upgrade-paid'));'''
     before = json.loads(sql(snapshot))
-    shutil.copytree(migrations[-1], target/'migrations'/new_migration)
-    migrate()
+    for migration in migrations[-2:]:
+        shutil.copytree(migration, target/'migrations'/migration.name)
+        migrate()
+        if json.loads(sql(snapshot)) != before:
+            raise SystemExit('Incremental migration changed fixture history')
     if json.loads(sql(snapshot)) != before:
         raise SystemExit('Migration altered fixture history or payment proof')
-    if sql('SELECT COUNT(*) FROM "_prisma_migrations" WHERE finished_at IS NOT NULL;') != '7':
+    if sql('SELECT COUNT(*) FROM "_prisma_migrations" WHERE finished_at IS NOT NULL;') != '8':
         raise SystemExit('Unexpected migration history')
     if sql('SELECT COUNT(*) FROM "DeviceCommand" WHERE "reservationId" IS NULL AND "requestKey" IS NULL;') != '1':
         raise SystemExit('Unexpected association for old administrator command')
-print('PASS six-to-seven migration upgrade preserves unknown command, operator audit, event, health and payment proof')
+print('PASS six-to-eight migration upgrade preserves unknown command, operator audit, event, health and payment proof')
