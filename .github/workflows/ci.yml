@@ -206,6 +206,8 @@ jobs:
           GOBIN="$RUNNER_TEMP/actionlint" go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
           "$RUNNER_TEMP/actionlint/actionlint" -shellcheck= -pyflakes= .github/workflows/{ci,staging-cd}.yml
       - run: python3 scripts/staging/test-cd.py
+      - name: Rehearse operator maintenance and recovery on a disposable stack
+        run: python3 scripts/staging/test-local.py --build
       - if: github.event_name == 'pull_request'
         run: sh scripts/staging/release-images.sh verify
         env:

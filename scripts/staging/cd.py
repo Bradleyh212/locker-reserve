@@ -236,6 +236,10 @@ def deploy(sha, refs):
     print(f'Staging {sha}: api/web revision verified; db/redis/caddy healthy.')
 
 
+def require_closed_window():
+    require(not (STATE / 'ota-window.json').exists(), 'Close the supervised OTA window before deployment or rollback')
+
+
 def main():
     os.umask(0o077)
     os.chdir(ROOT)
@@ -250,6 +254,8 @@ def main():
     STATE.mkdir(mode=0o700, exist_ok=True)
     with (STATE / 'deploy.lock').open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        require_closed_window()
+        os.environ['OTA_ENABLED'] = 'false'
         if operator:
             record = read('release.json')
             require(record and record['phase'] in ('healthy', 'switching'), 'Operator reconciliation required')

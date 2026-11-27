@@ -56,6 +56,10 @@ On success, check Actions' summary and the root-only journal. Check API/web IDs 
 
 After the first rollout and recovery review, the owner may enable `STAGING_AUTO_ENABLED=true` and disable the manual switch. If subsequent runs should proceed without a human click, deliberately change the environment's reviewer rule after the first deployment while retaining its main-only branch restriction and protected-main reviews. To suspend future deployment, set **both** switches false. A run already handed to the VPS may still finish. Check the journal before intervening.
 
+## Supervised firmware maintenance
+
+For a deployed OTA-capable backend use the [operator sequence for the API window, proxy, paired backup and isolated restore](embedded/supervised-ota.md#prepare-the-server-during-a-separately-approved-maintenance-window). The root-only maintenance entry point uses the deployment lock and a temporary override containing the healthy release’s exact image references. The receiver forces OTA off for deployments and rollbacks and refuses both during a supervised window. Close a window before reviewing a waiting release.
+
 ## Recovery and troubleshooting
 
 As an administrator inspect only release metadata:

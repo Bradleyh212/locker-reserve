@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Upgrade six staging migrations to PR #14 in a new fixture database only."""
+"""Upgrade six staging migrations through the seven-migration baseline and OTA in a new fixture database only."""
 import json
 import os
 from pathlib import Path
@@ -58,7 +58,9 @@ INSERT INTO "CustomerReservationAccess" ("reservationId","tokenHash","paymentInt
     before = json.loads(sql(snapshot))
     for migration in migrations[-2:]:
         shutil.copytree(migration, target/'migrations'/migration.name)
-    migrate()
+        migrate()
+        if json.loads(sql(snapshot)) != before:
+            raise SystemExit('Incremental migration changed fixture history')
     if json.loads(sql(snapshot)) != before:
         raise SystemExit('Migration altered fixture history or payment proof')
     if sql('SELECT COUNT(*) FROM "_prisma_migrations" WHERE finished_at IS NOT NULL;') != '8':
