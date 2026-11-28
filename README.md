@@ -8,7 +8,7 @@ A full-stack locker reservation system with support for:
 - admin authentication
 - public booking and Stripe checkout
 
-Built with Next.js, NestJS, and PostgreSQL.
+Built with Next.js, NestJS, and PostgreSQL. The [Expo customer mobile app](services/mobile/README.md) runs on iPhone and Android during development.
 
 The next milestone is physical locker access through ESP32 C++ firmware, a 12V
 solenoid and an optional door sensor, with simpler cloud-hosted Docker deployment.

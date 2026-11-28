@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "name": "LockerReserve",
+    "slug": "lockerreserve-mobile",
+    "version": "0.1.0",
+    "scheme": "lockerreserve",
+    "userInterfaceStyle": "light",
+    "plugins": ["expo-router"],
+    "ios": { "supportsTablet": true },
+    "web": { "bundler": "metro" }
+  }
+}
